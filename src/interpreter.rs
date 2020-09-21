@@ -4,7 +4,7 @@ use crate::token::{self, Literal::*, TokenType::*};
 pub struct Interpreter {}
 
 impl Interpreter {
-    pub fn new() -> Interpreter{
+    pub fn new() -> Interpreter {
         Interpreter {}
     }
 
@@ -41,18 +41,38 @@ impl Interpreter {
         } = bin_expr;
         let left_val = self.eval(*left);
         let right_val = self.eval(*right);
-        match (left_val, operator.token_type, right_val) {
-            (LoxNumber(left_num), PLUS, LoxNumber(right_num)) => LoxNumber(left_num + right_num),
-            (LoxNumber(left_num), STAR, LoxNumber(right_num)) => LoxNumber(left_num * right_num),
+        match (left_val, right_val) {
+            (LoxNumber(left_num), LoxNumber(right_num)) => {
+                match operator.token_type {
+                    PLUS => LoxNumber(left_num + right_num),
+                    MINS => LoxNumber(left_num - right_num),
+                    STAR => LoxNumber(left_num * right_num),
+                    SLASH => LoxNumber(left_num / right_num),
+                    GREATER => LoxBool(left_num > right_num),
+                    GREATER_EQUAL => LoxBool(left_num >= right_num),
+                    LESS => LoxBool(left_num < right_num),
+                    LESS_EQUAL => LoxBool(left_num <= right_num),
+                    EQUAL_EQUAL => LoxBool(left_num == right_num),
+                    BANG_EQUAL => LoxBool(left_num != right_num)
+                }
+            },
+            (LoxBool(left_bool), LoxBool(right_bool)) => {
+                match operator.token_type {
+                    EQUAL_EQUAL => LoxBool(left_bool == right_bool),
+                    BANG_EQUAL => LoxBool(left_bool != right_bool)
+                }
+            }
             _ => panic!(),
         }
     }
 
-    fn isTruthy(&self, literal: token::Literal) -> bool{
+    fn isTruthy(&self, literal: token::Literal) -> bool {
         match literal {
             LoxBool(val) => val,
             LoxNil => false,
-            _ => true
+            _ => true,
         }
     }
+
 }
+
