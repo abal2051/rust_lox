@@ -1,6 +1,7 @@
 use std::fmt;
 
-#[derive(Debug)]
+//surprised enums don't implement clone by default
+#[derive(Clone, Debug, PartialEq)]
 pub enum TokenType {
   // Single-character tokens.
   LEFT_PAREN, RIGHT_PAREN, LEFT_BRACE, RIGHT_BRACE,
@@ -21,17 +22,19 @@ pub enum TokenType {
 
   EOF
 }
-#[derive(Debug)]
-pub enum LoxType{
+
+#[derive(Debug, Clone)]
+pub enum Literal{
     LoxBool(bool),
     LoxString(String),
     LoxNumber(f64),
     LoxNil
 }
 
+#[derive(Clone, Debug)]
 pub struct Token {
     pub token_type: TokenType,
-    pub literal: LoxType,
+    pub literal: Option<Literal>,
     pub lexeme: String,
     pub line: usize,
 }
