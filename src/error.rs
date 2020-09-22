@@ -6,14 +6,22 @@ use std::fmt;
 pub enum SyntaxError {
     ClosingParenError(usize),
     MissingExprError(usize),
+    MissingTernaryColon(usize),
+    MissingSemicolon(usize),
 }
 
 impl fmt::Display for SyntaxError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            SyntaxError::ClosingParenError(line) => write!(f, "Missing \'(\' on line {}", line),
+            SyntaxError::ClosingParenError(line) => write!(f, "[line {}] Missing \')\'", line),
             SyntaxError::MissingExprError(line) => {
-                write!(f, "Expected expression")
+                write!(f, "[line {}] Expected expression on line", line)
+            },
+            SyntaxError::MissingTernaryColon(line) => {
+                write!(f, "[line {}] Missing \":\" inside ternary expression", line)
+            },
+            SyntaxError::MissingSemicolon(line) => {
+                write!(f, "[line {}] Missing \";\" after expression", line)
             }
         }
     }
@@ -31,11 +39,11 @@ impl fmt::Display for LexicalError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             LexicalError::UnexpectedCharacter(ch, line) => {
-                write!(f, "Unexpected \'{}\'", ch)
+                write!(f, "[line {}] Unexpected \'{}\'", line, ch)
             }
-            LexicalError::MalformedNumber(line) => write!(f, "Malformed number on line {}", line),
+            LexicalError::MalformedNumber(line) => write!(f, "[line {}] Malformed number", line),
             LexicalError::UnterminatedString(line) => {
-                write!(f, "Unterminated string")
+                write!(f, "[line {}] Unterminated string", line)
             }
         }
     }

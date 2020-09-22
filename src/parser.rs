@@ -3,7 +3,8 @@ use crate::token;
 use crate::token::TokenType::*;
 use std::collections::VecDeque;
 
-type Result_Parser = Result<Expr, SyntaxError>;
+type Result_Expr = Result<Expr, SyntaxError>;
+type Result_Stmt = Result<Stmt, SyntaxError>;
 
 #[derive(Debug, Clone)]
 pub struct Binary {
@@ -38,10 +39,16 @@ pub enum Expr {
     Grouping(Grouping),
 }
 
+#[derive(Debug, Clone)]
+pub enum Stmt {
+    Expr(Expr),
+    Print(Expr)
+}
+
 pub struct Parser {
     tokens: VecDeque<token::Token>,
     current: usize,
-    errors: Vec<SyntaxError>,
+    pub errors: Vec<SyntaxError>,
 }
 
 impl Parser {
@@ -53,15 +60,48 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self) -> Result_Parser {
-        Ok(self.expression()?)
+    pub fn parse(&mut self) -> Vec<Stmt> {
+        self.program()
     }
 
-    fn expression(&mut self) -> Result_Parser {
+    fn program(&mut self) -> Vec<Stmt> {
+        let mut stmts = Vec::new();
+        while self.peek().unwrap().token_type != EOF {
+            let stmt = self.statement();
+            match stmt {
+                Ok(stmt) => stmts.push(stmt),
+                Err(error) => { self.errors.push(error); self.synchronize();}
+            }
+        }
+        stmts
+    }
+
+    fn statement(&mut self) -> Result_Stmt {
+        if let Some(_) = self.match_next(&[PRINT]) {
+            Ok(self.print_statement()?)
+        }
+        else {
+            Ok(self.expr_statement()?)
+        }
+    }
+
+    fn expr_statement(&mut self) -> Result_Stmt {
+        let expr = self.expression()?;
+        self.consume(SEMICOLON)?;
+        Ok(Stmt::Expr(expr))
+    }
+
+    fn print_statement(&mut self) -> Result_Stmt {
+        let expr = self.expression()?;
+        self.consume(SEMICOLON)?;
+        Ok(Stmt::Print(expr))
+    }
+
+    fn expression(&mut self) -> Result_Expr {
         Ok(self.ternary()?)
     }
 
-    fn ternary(&mut self) -> Result_Parser {
+    fn ternary(&mut self) -> Result_Expr {
         let mut expr = self.equality()?;
         if let Some(op) = self.match_next(&[TERNARY]) {
             let if_true = self.equality()?;
@@ -74,7 +114,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn equality(&mut self) -> Result_Parser {
+    fn equality(&mut self) -> Result_Expr {
         let mut expr = self.comparison()?;
 
         while let Some(op) = (self.match_next(&[BANG_EQUAL, EQUAL_EQUAL])) {
@@ -89,7 +129,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn comparison(&mut self) -> Result_Parser {
+    fn comparison(&mut self) -> Result_Expr {
         let mut expr = self.addition()?;
 
         while let Some(op) = (self.match_next(&[GREATER, GREATER_EQUAL, LESS, LESS_EQUAL])) {
@@ -104,7 +144,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn addition(&mut self) -> Result_Parser {
+    fn addition(&mut self) -> Result_Expr {
         let mut expr = self.multiplication()?;
 
         while let Some(op) = (self.match_next(&[PLUS, MINUS])) {
@@ -119,7 +159,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn multiplication(&mut self) -> Result_Parser {
+    fn multiplication(&mut self) -> Result_Expr {
         let mut expr = self.unary()?;
 
         while let Some(op) = (self.match_next(&[STAR, SLASH])) {
@@ -133,7 +173,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn unary(&mut self) -> Result_Parser {
+    fn unary(&mut self) -> Result_Expr {
         if let Some(op) = (self.match_next(&[BANG, MINUS])) {
             let expr = Box::new(self.unary()?);
             return Ok(Expr::Unary(Unary {
@@ -144,7 +184,7 @@ impl Parser {
         self.primary()
     }
 
-    fn primary(&mut self) -> Result_Parser {
+    fn primary(&mut self) -> Result_Expr {
         if let Some(_) = (self.match_next(&[LEFT_PAREN])) {
             let expr = Expr::Grouping(Grouping {
                 expression: Box::new(self.expression()?),
@@ -188,10 +228,12 @@ impl Parser {
     }
 
     fn consume(&mut self, expected: token::TokenType) -> Result<(), SyntaxError> {
-        match self.advance() {
-            None => panic!("Should not have reached this state"),
-            Some(tok) if (tok).token_type == expected => Ok(()),
-            Some(tok) => Err(SyntaxError::ClosingParenError(tok.line)),
+        match self.peek() {
+            Some(tok) if (tok).token_type == expected => { self.advance(); Ok(())},
+            Some(tok) if expected == RIGHT_PAREN => Err(SyntaxError::ClosingParenError(tok.line)),
+            Some(tok) if expected == COLON => Err(SyntaxError::MissingTernaryColon(tok.line)),
+            Some(tok) if expected == SEMICOLON => Err(SyntaxError::MissingSemicolon(tok.line)),
+            _ => panic!("Should not have reached this state"),
         }
     }
 
@@ -224,6 +266,9 @@ impl Parser {
                     return;
                 }
                 RETURN => {
+                    return;
+                }
+                EOF => {
                     return;
                 }
                 _ => {

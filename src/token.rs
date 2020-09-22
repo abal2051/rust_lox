@@ -65,9 +65,9 @@ pub enum Literal {
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Literal::LoxBool(x) => write!(f, "Bool({})", x),
-            Literal::LoxNumber(x) => write!(f, "Number({})", x),
-            Literal::LoxString(x) => write!(f, "String(\"{}\")", x),
+            Literal::LoxBool(x) => write!(f, "{}", x),
+            Literal::LoxNumber(x) => write!(f, "{}", x),
+            Literal::LoxString(x) => write!(f, "{}", x),
             Literal::LoxNil => write!(f, "Nil"),
         }
     }

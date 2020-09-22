@@ -1,5 +1,5 @@
 use crate::error::RuntimeError;
-use crate::parser::{Binary, Ternary, Expr, Grouping, Unary};
+use crate::parser::{Binary, Ternary, Expr, Grouping, Unary, Stmt};
 use crate::token::{self, Literal::*, TokenType::*};
 
 type Result_Interpreter = Result<token::Literal, RuntimeError>;
@@ -11,7 +11,24 @@ impl Interpreter {
         Interpreter {}
     }
 
-    pub fn eval(&self, expr: Expr) -> Result_Interpreter {
+    pub fn interpret(&self, stmts: Vec<Stmt>) -> Result<(),RuntimeError> {
+        for stmt in stmts.into_iter() {
+            self.execute(stmt)?
+        }
+        Ok(())
+    }
+
+    pub fn execute(&self, stmt: Stmt) -> Result<(), RuntimeError> {
+        match stmt {
+            Stmt::Expr(expr) => {self.evaluate(expr)?;},
+            Stmt::Print(expr) => {
+                let res = self.evaluate(expr)?;
+                println!("{}", res);
+            } }
+        Ok(())
+    }
+
+    fn evaluate(&self, expr: Expr) -> Result_Interpreter {
         match expr {
             Expr::Literal(literal) => Ok(literal),
             Expr::Grouping(grouping) => self.eval_expr(grouping),
@@ -23,12 +40,12 @@ impl Interpreter {
     }
 
     fn eval_expr(&self, group_expr: Grouping) -> Result_Interpreter {
-        self.eval(*group_expr.expression)
+        self.evaluate(*group_expr.expression)
     }
 
     fn eval_unary(&self, unary_expr: Unary) -> Result_Interpreter {
         let Unary { operator, right } = unary_expr;
-        let right_val = self.eval(*right)?;
+        let right_val = self.evaluate(*right)?;
 
         let ret = match (&operator.token_type, right_val) {
             (MINUS, LoxNumber(actual_val)) => LoxNumber(-actual_val),
@@ -44,8 +61,8 @@ impl Interpreter {
             operator,
             right,
         } = bin_expr;
-        let left_val = self.eval(*left)?;
-        let right_val = self.eval(*right)?;
+        let left_val = self.evaluate(*left)?;
+        let right_val = self.evaluate(*right)?;
         let ret = match (left_val, right_val) {
             (LoxNumber(left_num), LoxNumber(right_num)) => match &operator.token_type {
                 PLUS => LoxNumber(left_num + right_num),
@@ -93,13 +110,13 @@ impl Interpreter {
             if_false,
             ..
         } = tern_expr;
-        let condition = self.isTruthy(self.eval(*condition)?);
-        let if_true = self.eval(*if_true)?;
+        let condition = self.isTruthy(self.evaluate(*condition)?);
+        let if_true = self.evaluate(*if_true)?;
         if condition {
             Ok(if_true)
         }
         else {
-            let if_false = self.eval(*if_false)?;
+            let if_false = self.evaluate(*if_false)?;
             Ok(if_false)
         }
     }

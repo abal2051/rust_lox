@@ -29,18 +29,14 @@ impl Lox {
         println!();
         let mut parser = parser::Parser::new(VecDeque::from(scanner.tokens));
         let interpreter = interpreter::Interpreter::new();
-        let expr = match parser.parse() {
-            Err(err) => eprintln!("ParserError: {}", err),
-            Ok(expr) => {
-                println!("{}", parser::print_expr(&expr));
-                let res = interpreter.eval(expr.clone());
-                match res {
-                    Ok(expr) => println!("{}", expr),
-                    Err(msg) => eprintln!("RuntimeError: {}", msg)
-                }
-            }
-        };
-
+        let parse_tree = parser.parse();
+        for error in parser.errors {
+            eprintln!("{}", error)
+        }
+        match interpreter.interpret(parse_tree) {
+            Err(msg) => eprintln!("RuntimeError: {}", msg),
+            _ => ()
+        }
         io::stdout().flush().unwrap();
     }
 }
@@ -88,11 +84,12 @@ fn run_prompt(lox: &mut Lox) {
 
 fn run_file(lox: &mut Lox, filename: &str) -> Result<(), io::Error> {
     let source = fs::read_to_string(filename)?;
-    for line in source.lines() {
-        lox.run(line);
-        if lox.had_error {
-            process::exit(64)
-        }
-    }
+    lox.run(&source);
+   // for line in source.lines() {
+   //     lox.run(line);
+   //     if lox.had_error {
+   //         process::exit(64)
+   //     }
+   // }
     Ok(())
 }
