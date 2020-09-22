@@ -33,10 +33,13 @@ impl Lox {
         for error in parser.errors {
             eprintln!("{}", error)
         }
-        match interpreter.interpret(parse_tree) {
-            Err(msg) => eprintln!("RuntimeError: {}", msg),
-            _ => ()
+        for statement in parse_tree {
+            println!("{:?}", statement);
         }
+        //match interpreter.interpret(parse_tree) {
+        //    Err(msg) => eprintln!("RuntimeError: {}", msg),
+        //    _ => ()
+        //}
         io::stdout().flush().unwrap();
     }
 }

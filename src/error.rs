@@ -8,6 +8,7 @@ pub enum SyntaxError {
     MissingExprError(usize),
     MissingTernaryColon(usize),
     MissingSemicolon(usize),
+    MissingIdentifier(usize)
 }
 
 impl fmt::Display for SyntaxError {
@@ -22,6 +23,9 @@ impl fmt::Display for SyntaxError {
             },
             SyntaxError::MissingSemicolon(line) => {
                 write!(f, "[line {}] Missing \";\" after expression", line)
+            }
+            SyntaxError::MissingIdentifier(line) => {
+                write!(f, "[line {}] Expected identifier after \"var\"", line)
             }
         }
     }

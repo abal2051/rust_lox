@@ -1,8 +1,12 @@
 use crate::error::RuntimeError;
-use crate::parser::{Binary, Ternary, Expr, Grouping, Unary, Stmt};
+use crate::parser::{Binary, Expr, Grouping, Stmt, Ternary, Unary};
 use crate::token::{self, Literal::*, TokenType::*};
+use std::collections::HashMap;
 
 type Result_Interpreter = Result<token::Literal, RuntimeError>;
+
+struct Environment {
+}
 
 pub struct Interpreter {}
 
@@ -11,7 +15,7 @@ impl Interpreter {
         Interpreter {}
     }
 
-    pub fn interpret(&self, stmts: Vec<Stmt>) -> Result<(),RuntimeError> {
+    pub fn interpret(&self, stmts: Vec<Stmt>) -> Result<(), RuntimeError> {
         for stmt in stmts.into_iter() {
             self.execute(stmt)?
         }
@@ -20,11 +24,15 @@ impl Interpreter {
 
     pub fn execute(&self, stmt: Stmt) -> Result<(), RuntimeError> {
         match stmt {
-            Stmt::Expr(expr) => {self.evaluate(expr)?;},
+            Stmt::Expr(expr) => {
+                self.evaluate(expr)?;
+            }
             Stmt::Print(expr) => {
                 let res = self.evaluate(expr)?;
                 println!("{}", res);
-            } }
+            }
+            _ => panic!(),
+        }
         Ok(())
     }
 
@@ -114,8 +122,7 @@ impl Interpreter {
         let if_true = self.evaluate(*if_true)?;
         if condition {
             Ok(if_true)
-        }
-        else {
+        } else {
             let if_false = self.evaluate(*if_false)?;
             Ok(if_false)
         }

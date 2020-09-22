@@ -16,33 +16,38 @@ pub struct Binary {
 pub struct Grouping {
     pub expression: Box<Expr>,
 }
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct Unary {
     pub operator: token::Token,
     pub right: Box<Expr>,
 }
 
-#[derive(Debug,Clone)]
-pub struct Ternary{
+#[derive(Debug, Clone)]
+pub struct Ternary {
     pub condition: Box<Expr>,
     pub if_true: Box<Expr>,
     pub if_false: Box<Expr>,
-    pub operator: token::Token
+    pub operator: token::Token,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Ternary(Ternary),
     Binary(Binary),
     Unary(Unary),
     Literal(token::Literal),
     Grouping(Grouping),
+    Variable(token::Token),
 }
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Expr(Expr),
-    Print(Expr)
+    Print(Expr),
+    Var {
+        ident: token::Token,
+        initializer: Option<Expr>,
+    },
 }
 
 pub struct Parser {
@@ -67,20 +72,41 @@ impl Parser {
     fn program(&mut self) -> Vec<Stmt> {
         let mut stmts = Vec::new();
         while self.peek().unwrap().token_type != EOF {
-            let stmt = self.statement();
+            let stmt = self.declaration();
             match stmt {
                 Ok(stmt) => stmts.push(stmt),
-                Err(error) => { self.errors.push(error); self.synchronize();}
+                Err(error) => {
+                    self.errors.push(error);
+                    self.synchronize();
+                }
             }
         }
         stmts
     }
 
+    fn declaration(&mut self) -> Result_Stmt {
+        if let Some(_) = self.match_next(&[VAR]) {
+            self.var_declaration()
+        } else {
+            self.statement()
+        }
+    }
+
+    fn var_declaration(&mut self) -> Result_Stmt {
+        let ident = self.consume(IDENTIFIER)?;
+        let initializer = if let Some(_) = self.match_next(&[EQUAL]) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+        self.consume(SEMICOLON)?;
+        Ok(Stmt::Var { ident, initializer })
+    }
+
     fn statement(&mut self) -> Result_Stmt {
         if let Some(_) = self.match_next(&[PRINT]) {
             Ok(self.print_statement()?)
-        }
-        else {
+        } else {
             Ok(self.expr_statement()?)
         }
     }
@@ -108,7 +134,10 @@ impl Parser {
             self.consume(COLON)?;
             let if_false = self.equality()?;
             expr = Expr::Ternary(Ternary {
-                condition: Box::new(expr), if_false: Box::new(if_false), if_true: Box::new(if_true), operator: op
+                condition: Box::new(expr),
+                if_false: Box::new(if_false),
+                if_true: Box::new(if_true),
+                operator: op,
             })
         }
         Ok(expr)
@@ -197,6 +226,7 @@ impl Parser {
             None => panic!("why am i here"),
             Some(tok) => match tok.token_type {
                 NUMBER | STRING | TRUE | FALSE | NIL => Ok(Expr::Literal(tok.literal.unwrap())),
+                IDENTIFIER => Ok(Expr::Variable(tok)),
                 _ => Err(SyntaxError::MissingExprError(tok.line)),
             },
         }
@@ -227,9 +257,10 @@ impl Parser {
         None
     }
 
-    fn consume(&mut self, expected: token::TokenType) -> Result<(), SyntaxError> {
+    fn consume(&mut self, expected: token::TokenType) -> Result<token::Token, SyntaxError> {
         match self.peek() {
-            Some(tok) if (tok).token_type == expected => { self.advance(); Ok(())},
+            Some(tok) if (tok).token_type == expected => Ok(self.advance().unwrap()),
+            Some(tok) if expected == IDENTIFIER => Err(SyntaxError::MissingIdentifier(tok.line)),
             Some(tok) if expected == RIGHT_PAREN => Err(SyntaxError::ClosingParenError(tok.line)),
             Some(tok) if expected == COLON => Err(SyntaxError::MissingTernaryColon(tok.line)),
             Some(tok) if expected == SEMICOLON => Err(SyntaxError::MissingSemicolon(tok.line)),
@@ -297,7 +328,7 @@ fn paranthesize(name: &str, exprs: Vec<&Expr>) -> String {
                 condition,
                 if_true,
                 if_false,
-                operator
+                operator,
             }) => paranthesize(&operator.lexeme, vec![condition, if_true, if_false]),
             _ => String::from(""),
         };
@@ -323,7 +354,8 @@ pub fn print_expr(expr: &Expr) -> String {
             condition,
             if_true,
             if_false,
-            operator
+            operator,
         }) => paranthesize(&operator.lexeme, vec![condition, if_true, if_false]),
+        _ => panic!(),
     }
 }
