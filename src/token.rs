@@ -3,32 +3,74 @@ use std::fmt;
 //surprised enums don't implement clone by default
 #[derive(Clone, Debug, PartialEq)]
 pub enum TokenType {
-  // Single-character tokens.
-  LEFT_PAREN, RIGHT_PAREN, LEFT_BRACE, RIGHT_BRACE,
-  COMMA, DOT, MINUS, PLUS, SEMICOLON, SLASH, STAR,
+    // Single-character tokens.
+    LEFT_PAREN,
+    RIGHT_PAREN,
+    LEFT_BRACE,
+    RIGHT_BRACE,
+    COMMA,
+    DOT,
+    MINUS,
+    PLUS,
+    SEMICOLON,
+    SLASH,
+    STAR,
+    TERNARY,
+    COLON,
 
-  // One or two character tokens.
-  BANG, BANG_EQUAL,
-  EQUAL, EQUAL_EQUAL,
-  GREATER, GREATER_EQUAL,
-  LESS, LESS_EQUAL,
+    // One or two character tokens.
+    BANG,
+    BANG_EQUAL,
+    EQUAL,
+    EQUAL_EQUAL,
+    GREATER,
+    GREATER_EQUAL,
+    LESS,
+    LESS_EQUAL,
 
-  // Literals.
-  IDENTIFIER, STRING, NUMBER,
+    // Literals.
+    IDENTIFIER,
+    STRING,
+    NUMBER,
 
-  // Keywords.
-  AND, CLASS, ELSE, FALSE, FUN, FOR, IF, NIL, OR,
-  PRINT, RETURN, SUPER, THIS, TRUE, VAR, WHILE,
+    // Keywords.
+    AND,
+    CLASS,
+    ELSE,
+    FALSE,
+    FUN,
+    FOR,
+    IF,
+    NIL,
+    OR,
+    PRINT,
+    RETURN,
+    SUPER,
+    THIS,
+    TRUE,
+    VAR,
+    WHILE,
 
-  EOF
+    EOF,
 }
 
-#[derive(Debug, Clone)]
-pub enum Literal{
+#[derive(Debug, Clone, PartialEq)]
+pub enum Literal {
     LoxBool(bool),
     LoxString(String),
     LoxNumber(f64),
-    LoxNil
+    LoxNil,
+}
+
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Literal::LoxBool(x) => write!(f, "Bool({})", x),
+            Literal::LoxNumber(x) => write!(f, "Number({})", x),
+            Literal::LoxString(x) => write!(f, "String(\"{}\")", x),
+            Literal::LoxNil => write!(f, "Nil"),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -41,7 +83,10 @@ pub struct Token {
 
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} {:?} {:?}", self.lexeme, self.token_type, self.literal)
+        write!(
+            f,
+            "{} {:?} {:?}",
+            self.lexeme, self.token_type, self.literal
+        )
     }
 }
-

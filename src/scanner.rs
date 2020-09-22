@@ -100,6 +100,8 @@ impl Scanner {
             '+' => Ok(self.add_token(PLUS, None)),
             ';' => Ok(self.add_token(SEMICOLON, None)),
             '*' => Ok(self.add_token(STAR, None)),
+            '?' => Ok(self.add_token(TERNARY, None)),
+            ':' => Ok(self.add_token(COLON, None)),
             '!' => {
                 let tok_type = if self.check('=') { BANG_EQUAL } else { BANG };
                 Ok(self.add_token(tok_type, None))
@@ -143,7 +145,7 @@ impl Scanner {
             ch if Scanner::is_digit(ch) => self.number(ch),
             ch if Scanner::is_alpha(ch) => self.identifier(ch),
             ' ' | '\r' | '\t' => Ok(()),
-            ch => Err(LexicalError::UnexpectedCharacter(ch, self.line))
+            ch => Err(LexicalError::UnexpectedCharacter(self.line,ch))
         }
     }
 

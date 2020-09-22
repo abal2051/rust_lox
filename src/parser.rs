@@ -22,7 +22,16 @@ pub struct Unary {
 }
 
 #[derive(Debug,Clone)]
+pub struct Ternary{
+    pub condition: Box<Expr>,
+    pub if_true: Box<Expr>,
+    pub if_false: Box<Expr>,
+    pub operator: token::Token
+}
+
+#[derive(Debug,Clone)]
 pub enum Expr {
+    Ternary(Ternary),
     Binary(Binary),
     Unary(Unary),
     Literal(token::Literal),
@@ -44,8 +53,25 @@ impl Parser {
         }
     }
 
-    pub fn expression(&mut self) -> Result_Parser {
-        Ok(self.equality()?)
+    pub fn parse(&mut self) -> Result_Parser {
+        Ok(self.expression()?)
+    }
+
+    fn expression(&mut self) -> Result_Parser {
+        Ok(self.ternary()?)
+    }
+
+    fn ternary(&mut self) -> Result_Parser {
+        let mut expr = self.equality()?;
+        if let Some(op) = self.match_next(&[TERNARY]) {
+            let if_true = self.equality()?;
+            self.consume(COLON)?;
+            let if_false = self.equality()?;
+            expr = Expr::Ternary(Ternary {
+                condition: Box::new(expr), if_false: Box::new(if_false), if_true: Box::new(if_true), operator: op
+            })
+        }
+        Ok(expr)
     }
 
     fn equality(&mut self) -> Result_Parser {
@@ -131,7 +157,7 @@ impl Parser {
             None => panic!("why am i here"),
             Some(tok) => match tok.token_type {
                 NUMBER | STRING | TRUE | FALSE | NIL => Ok(Expr::Literal(tok.literal.unwrap())),
-                _ => Err(SyntaxError::MissingExprError(tok)),
+                _ => Err(SyntaxError::MissingExprError(tok.line)),
             },
         }
     }
@@ -162,10 +188,10 @@ impl Parser {
     }
 
     fn consume(&mut self, expected: token::TokenType) -> Result<(), SyntaxError> {
-        match self.peek() {
+        match self.advance() {
             None => panic!("Should not have reached this state"),
             Some(tok) if (tok).token_type == expected => Ok(()),
-            Some(tok) => Err(SyntaxError::ClosingParenError(tok.clone())),
+            Some(tok) => Err(SyntaxError::ClosingParenError(tok.line)),
         }
     }
 
@@ -222,6 +248,12 @@ fn paranthesize(name: &str, exprs: Vec<&Expr>) -> String {
                 operator,
                 right,
             }) => paranthesize(&operator.lexeme[..], vec![left, right]),
+            Expr::Ternary(Ternary {
+                condition,
+                if_true,
+                if_false,
+                operator
+            }) => paranthesize(&operator.lexeme, vec![condition, if_true, if_false]),
             _ => String::from(""),
         };
         s.push(' ');
@@ -242,5 +274,11 @@ pub fn print_expr(expr: &Expr) -> String {
             operator,
             right,
         }) => paranthesize(&operator.lexeme[..], vec![left, right]),
+        Expr::Ternary(Ternary {
+            condition,
+            if_true,
+            if_false,
+            operator
+        }) => paranthesize(&operator.lexeme, vec![condition, if_true, if_false]),
     }
 }

@@ -24,17 +24,20 @@ impl Lox {
             _ => (),
         }
         for tok in scanner.tokens.iter() {
-            print!("[{:?}],", tok);
+            print!("[{:?}],", tok.token_type);
         }
         println!();
         let mut parser = parser::Parser::new(VecDeque::from(scanner.tokens));
         let interpreter = interpreter::Interpreter::new();
-        let expr = match parser.expression() {
+        let expr = match parser.parse() {
             Err(err) => eprintln!("ParserError: {}", err),
             Ok(expr) => {
-                let res = interpreter.eval(expr.clone());
                 println!("{}", parser::print_expr(&expr));
-                println!("{:?}", res);
+                let res = interpreter.eval(expr.clone());
+                match res {
+                    Ok(expr) => println!("{}", expr),
+                    Err(msg) => eprintln!("RuntimeError: {}", msg)
+                }
             }
         };
 
@@ -56,7 +59,7 @@ fn main() -> Result<(), io::Error> {
                 run_prompt(&mut lox);
             }
             2 => run_file(&mut lox, &args[1]).unwrap_or_else(|err| {
-                error!(err);
+                eprintln!("{}", err)
             }),
             _ => {
                 println!("Usage: jlox [script]");
