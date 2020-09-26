@@ -1,8 +1,8 @@
+use crate::error::LexicalError;
 use crate::token;
 use crate::token::TokenType::*;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
-use crate::error::LexicalError;
 
 type Result_Line = Result<(), LexicalError>;
 
@@ -72,7 +72,7 @@ impl Scanner {
             token_type: EOF,
             literal: None,
             lexeme: String::from(""),
-            line: self.line
+            line: self.line,
         });
         Ok(())
     }
@@ -151,7 +151,7 @@ impl Scanner {
             ch if Scanner::is_digit(ch) => self.number(ch),
             ch if Scanner::is_alpha(ch) => self.identifier(ch),
             ' ' | '\r' | '\t' => Ok(()),
-            ch => Err(LexicalError::UnexpectedCharacter(self.line,ch))
+            ch => Err(LexicalError::UnexpectedCharacter(self.line, ch)),
         }
     }
 
@@ -183,10 +183,9 @@ impl Scanner {
                 TRUE => self.add_token(type_.clone(), Some(token::Literal::LoxBool(true))),
                 FALSE => self.add_token(type_.clone(), Some(token::Literal::LoxBool(false))),
                 NIL => self.add_token(type_.clone(), Some(token::Literal::LoxNil)),
-                _ => self.add_token(type_.clone(), None)
+                _ => self.add_token(type_.clone(), None),
             }
-        }
-        else {
+        } else {
             self.add_token(IDENTIFIER, None);
         }
         Ok(())

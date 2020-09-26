@@ -16,7 +16,10 @@ struct Lox {
 
 impl Lox {
     fn new() -> Lox {
-        Lox { had_error: false, interpreter: interpreter::Interpreter::new() }
+        Lox {
+            had_error: false,
+            interpreter: interpreter::Interpreter::new(),
+        }
     }
     fn run(&mut self, source: &str) {
         let mut scanner = scanner::Scanner::new(String::from(source));
@@ -34,11 +37,11 @@ impl Lox {
             eprintln!("{}", error)
         }
         if parser.errors.len() > 0 {
-            return 
+            return;
         }
         match self.interpreter.interpret(parse_tree) {
             Err(msg) => eprintln!("RuntimeError: {}", msg),
-            _ => ()
+            _ => (),
         }
         io::stdout().flush().unwrap();
     }
@@ -62,13 +65,13 @@ fn main() -> Result<(), io::Error> {
             process::exit(64);
         }
     }
-//        let source = String::from("print (5 + 5) > (5 * 5) ? \"addition is greater\" : \"multiplication is greater\";");
-//        let mut scanner = scanner::Scanner::new(source);
-//        scanner.scan_tokens();
-//        let mut parser = parser::Parser::new(VecDeque::from(scanner.tokens));
-//        let stmts = parser.parse();
-//        let interpreter = interpreter::Interpreter::new();
-//        interpreter.interpret(stmts);
+    //        let source = String::from("print (5 + 5) > (5 * 5) ? \"addition is greater\" : \"multiplication is greater\";");
+    //        let mut scanner = scanner::Scanner::new(source);
+    //        scanner.scan_tokens();
+    //        let mut parser = parser::Parser::new(VecDeque::from(scanner.tokens));
+    //        let stmts = parser.parse();
+    //        let interpreter = interpreter::Interpreter::new();
+    //        interpreter.interpret(stmts);
     Ok(())
 }
 

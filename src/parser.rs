@@ -50,14 +50,14 @@ pub enum Expr {
 #[derive(Debug, Clone)]
 pub struct Var_Decl {
     pub ident: token::Token,
-    pub initializer: Option<Expr>
+    pub initializer: Option<Expr>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Expr(Expr),
     Print(Expr),
-    Var_Decl(Var_Decl)
+    Var_Decl(Var_Decl),
 }
 
 pub struct Parser {

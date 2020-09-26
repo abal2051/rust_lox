@@ -1,13 +1,12 @@
 #![feature(test)]
 #![feature(map_entry_replace)]
-
+#![feature(hash_raw_entry)]
 #![allow(warnings)]
-pub mod scanner;
-mod token;
-pub mod parser;
 pub mod error;
 pub mod interpreter;
-
+pub mod parser;
+pub mod scanner;
+mod token;
 
 #[cfg(test)]
 mod tests {
@@ -18,7 +17,7 @@ mod tests {
     use test::Bencher;
 
     #[bench]
-    fn it_works(b: &mut Bencher){
+    fn it_works(b: &mut Bencher) {
         b.iter(|| {
             let source = String::from("print (5 + 5) > (5 * 5) ? \"addition is greater\" : \"multiplication is greater\";");
             let mut scanner = scanner::Scanner::new(source);
@@ -30,4 +29,3 @@ mod tests {
         });
     }
 }
-

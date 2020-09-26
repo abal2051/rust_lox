@@ -1,25 +1,26 @@
 use crate::error::RuntimeError;
-use crate::parser::{Binary, Expr, Grouping, Stmt, Ternary, Unary, Assignment, Var_Decl};
+use crate::parser::{Assignment, Binary, Expr, Grouping, Stmt, Ternary, Unary, Var_Decl};
 use crate::token::{self, Literal::*, TokenType::*};
-use std::collections::{HashMap, hash_map::Entry, hash_map::OccupiedEntry, hash_map::VacantEntry};
+use std::collections::{
+    HashMap, hash_map::RandomState, hash_map::RawEntryMut, hash_map::RawOccupiedEntryMut,
+};
 
 type Result_Interpreter = Result<token::Literal, RuntimeError>;
 
 pub struct Interpreter {
-    env: Environment
+    env: Environment,
 }
 
 struct Environment {
     env: HashMap<String, token::Literal>,
-    parent_env: Option<Box<Environment>>
+    parent_env: Option<Box<Environment>>,
 }
-
 
 impl Environment {
     fn new() -> Environment {
         Environment {
             env: HashMap::new(),
-            parent_env: None
+            parent_env: None,
         }
     }
 
@@ -27,7 +28,7 @@ impl Environment {
         self.parent_env = Some(Box::new(parent_env));
     }
 
-    fn disown_parent(&mut self) -> Option<Box<Environment>>{
+    fn disown_parent(&mut self) -> Option<Box<Environment>> {
         self.parent_env.take()
     }
 
@@ -39,15 +40,18 @@ impl Environment {
         }
     }
 
-    fn get_entry(&mut self, ident: String) -> Result<OccupiedEntry<String, token::Literal>, RuntimeError> {
-        if let Entry::Occupied(entry) = self.env.entry(ident.clone()) {
-            return Ok(entry)
+    fn get_entry(
+        &mut self,
+        ident: String,
+    ) -> Result<RawOccupiedEntryMut<String, token::Literal, RandomState>, RuntimeError> {
+        if let RawEntryMut::Occupied(entry) = self.env.raw_entry_mut().from_key(&ident) {
+            return Ok(entry);
         } else {
             if let None = self.parent_env {
-                return Err(RuntimeError::UndefinedVariable(ident))
+                return Err(RuntimeError::UndefinedVariable(ident));
             } else {
                 let parent_env = self.parent_env.as_mut().unwrap();
-                return Ok(parent_env.get_entry(ident)?)
+                return Ok(parent_env.get_entry(ident)?);
             }
         };
     }
@@ -57,9 +61,10 @@ impl Environment {
         Ok(entry.get().clone())
     }
 
-    fn assign(&mut self, ident: String, literal: token::Literal) -> Result_Interpreter{
-        let entry = self.get_entry(ident)?;
-        entry.replace_entry(literal.clone());
+    fn assign(&mut self, ident: String, literal: token::Literal) -> Result_Interpreter {
+        let mut entry = self.get_entry(ident)?;
+        let value = entry.get_mut();
+        *value = literal.clone();
         Ok(literal)
     }
 }
@@ -67,7 +72,7 @@ impl Environment {
 impl Interpreter {
     pub fn new() -> Interpreter {
         Interpreter {
-            env: Environment::new()
+            env: Environment::new(),
         }
     }
 
@@ -87,11 +92,17 @@ impl Interpreter {
                 let res = self.evaluate(expr)?;
                 println!("{}", res);
             }
-            Stmt::Var_Decl(Var_Decl{ ident: token::Token { lexeme, .. }, initializer: Some(expr)}) => {
+            Stmt::Var_Decl(Var_Decl {
+                ident: token::Token { lexeme, .. },
+                initializer: Some(expr),
+            }) => {
                 let res = self.evaluate(expr)?;
                 self.env.define(lexeme, Some(res));
             }
-            Stmt::Var_Decl(Var_Decl { ident: token::Token { lexeme, ..}, initializer: None}) => {
+            Stmt::Var_Decl(Var_Decl {
+                ident: token::Token { lexeme, .. },
+                initializer: None,
+            }) => {
                 self.env.define(lexeme, None);
             }
             _ => panic!(),
@@ -112,7 +123,7 @@ impl Interpreter {
         }
     }
 
-    fn eval_assignment(&mut self, assignment_expr: Assignment) -> Result_Interpreter{
+    fn eval_assignment(&mut self, assignment_expr: Assignment) -> Result_Interpreter {
         let Assignment { ident, expression } = assignment_expr;
         let r_value = self.evaluate(*expression)?;
         self.env.assign(ident.lexeme, r_value)
@@ -208,4 +219,3 @@ impl Interpreter {
         }
     }
 }
-

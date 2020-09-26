@@ -16,12 +16,10 @@ impl fmt::Display for SyntaxError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             SyntaxError::ClosingParen(line) => write!(f, "[line {}] Missing \')\'", line),
-            SyntaxError::MissingExpr(line) => {
-                write!(f, "[line {}] Expected expression", line)
-            },
+            SyntaxError::MissingExpr(line) => write!(f, "[line {}] Expected expression", line),
             SyntaxError::MissingTernaryColon(line) => {
                 write!(f, "[line {}] Missing \":\" inside ternary expression", line)
-            },
+            }
             SyntaxError::MissingSemicolon(line) => {
                 write!(f, "[line {}] Missing \";\" after expression", line)
             }
@@ -78,11 +76,7 @@ impl fmt::Display for RuntimeError {
                 "No unary operator \"{}\" for operand of type ({})",
                 op.lexeme, right
             ),
-            RuntimeError::UndefinedVariable(ident) => write!(
-                f,
-                "Undefined variable \"{}\"",
-                ident
-            ),
+            RuntimeError::UndefinedVariable(ident) => write!(f, "Undefined variable \"{}\"", ident),
         }
     }
 }
