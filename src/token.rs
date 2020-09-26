@@ -1,3 +1,5 @@
+#![allow(non_camel_case_types)]
+
 use std::fmt;
 
 //surprised enums don't implement clone by default

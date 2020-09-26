@@ -1,7 +1,7 @@
 #![feature(test)]
 #![feature(map_entry_replace)]
 #![feature(hash_raw_entry)]
-#![allow(warnings)]
+//#![allow(warnings)]
 pub mod error;
 pub mod interpreter;
 pub mod parser;

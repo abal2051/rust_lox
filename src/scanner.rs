@@ -4,10 +4,9 @@ use crate::token::TokenType::*;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 
-type Result_Line = Result<(), LexicalError>;
+type ResultLine = Result<(), LexicalError>;
 
 pub struct Scanner {
-    source: String,
     source_chars: Vec<char>,
     pub tokens: Vec<token::Token>,
     start: usize,
@@ -44,7 +43,6 @@ impl Scanner {
         //let source = String::from(source.replace(" ", ""));
         let source_chars = source.chars().collect::<Vec<char>>();
         Scanner {
-            source,
             source_chars,
             tokens: Vec::new(),
             start: 0,
@@ -59,7 +57,7 @@ impl Scanner {
         }
     }
 
-    pub fn scan_tokens(&mut self) -> Result_Line {
+    pub fn scan_tokens(&mut self) -> ResultLine {
         //let mut source_copy = self.source.clone();
         //let source_it = source_copy.chars().enumerate();
         //let source_it = self.source.chars().collect::<Vec<_>>().into_iter().enumerate();
@@ -91,7 +89,7 @@ impl Scanner {
         });
     }
 
-    fn consume_token(&mut self, ch: char) -> Result_Line {
+    fn consume_token(&mut self, ch: char) -> ResultLine {
         match ch {
             '\n' => Ok({
                 self.line += 1;
@@ -129,7 +127,7 @@ impl Scanner {
                 Ok(self.add_token(tok_type, None))
             }
             '/' => {
-                if (self.check('/')) {
+                if self.check('/') {
                     loop {
                         match self.peek() {
                             Some('\n') => break,
@@ -167,7 +165,7 @@ impl Scanner {
         Scanner::is_alpha(ch) || Scanner::is_digit(ch)
     }
 
-    fn identifier(&mut self, alpha: char) -> Result_Line {
+    fn identifier(&mut self, alpha: char) -> ResultLine {
         let mut s: String = String::new();
         s.push(alpha);
         while let Some(&ch) = self.peek() {
@@ -191,7 +189,7 @@ impl Scanner {
         Ok(())
     }
 
-    fn number(&mut self, num: char) -> Result_Line {
+    fn number(&mut self, num: char) -> ResultLine {
         let mut seen_dot: bool = false;
         let mut trailing_dot: bool = false;
         let mut s: String = String::new();
@@ -231,7 +229,7 @@ impl Scanner {
         Ok(())
     }
 
-    fn string(&mut self) -> Result_Line {
+    fn string(&mut self) -> ResultLine {
         let mut s: String = String::new();
         loop {
             match self.peek() {

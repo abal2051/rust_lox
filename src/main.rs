@@ -39,6 +39,7 @@ impl Lox {
         if parser.errors.len() > 0 {
             return;
         }
+        //println!("{:#?}", parse_tree);
         match self.interpreter.interpret(parse_tree) {
             Err(msg) => eprintln!("RuntimeError: {}", msg),
             _ => (),

@@ -3,8 +3,8 @@ use crate::token;
 use crate::token::TokenType::*;
 use std::collections::VecDeque;
 
-type Result_Expr = Result<Expr, SyntaxError>;
-type Result_Stmt = Result<Stmt, SyntaxError>;
+type ResultExpr = Result<Expr, SyntaxError>;
+type ResultStmt = Result<Stmt, SyntaxError>;
 
 #[derive(Debug, Clone)]
 pub struct Binary {
@@ -48,7 +48,7 @@ pub enum Expr {
 }
 
 #[derive(Debug, Clone)]
-pub struct Var_Decl {
+pub struct VarDecl {
     pub ident: token::Token,
     pub initializer: Option<Expr>,
 }
@@ -57,7 +57,8 @@ pub struct Var_Decl {
 pub enum Stmt {
     Expr(Expr),
     Print(Expr),
-    Var_Decl(Var_Decl),
+    VarDecl(VarDecl),
+    Block(Vec<Box<Stmt>>)
 }
 
 pub struct Parser {
@@ -94,7 +95,7 @@ impl Parser {
         stmts
     }
 
-    fn declaration(&mut self) -> Result_Stmt {
+    fn declaration(&mut self) -> ResultStmt {
         if let Some(_) = self.match_next(&[VAR]) {
             self.var_declaration()
         } else {
@@ -102,7 +103,7 @@ impl Parser {
         }
     }
 
-    fn var_declaration(&mut self) -> Result_Stmt {
+    fn var_declaration(&mut self) -> ResultStmt {
         let ident = self.consume(IDENTIFIER)?;
         let initializer = if let Some(_) = self.match_next(&[EQUAL]) {
             Some(self.expression()?)
@@ -110,47 +111,62 @@ impl Parser {
             None
         };
         self.consume(SEMICOLON)?;
-        Ok(Stmt::Var_Decl(Var_Decl { ident, initializer }))
+        Ok(Stmt::VarDecl(VarDecl { ident, initializer }))
     }
 
-    fn statement(&mut self) -> Result_Stmt {
+    fn statement(&mut self) -> ResultStmt {
         if let Some(_) = self.match_next(&[PRINT]) {
-            Ok(self.print_statement()?)
-        } else {
-            Ok(self.expr_statement()?)
+            return Ok(self.print_statement()?)
         }
+        if let Some(_) = self.match_next(&[LEFT_BRACE]){
+            return Ok(self.block()?)
+        }
+        Ok(self.expr_statement()?)
     }
 
-    fn expr_statement(&mut self) -> Result_Stmt {
+    fn expr_statement(&mut self) -> ResultStmt {
         let expr = self.expression()?;
         self.consume(SEMICOLON)?;
         Ok(Stmt::Expr(expr))
     }
 
-    fn print_statement(&mut self) -> Result_Stmt {
+    fn print_statement(&mut self) -> ResultStmt {
         let expr = self.expression()?;
         self.consume(SEMICOLON)?;
         Ok(Stmt::Print(expr))
     }
 
-    fn expression(&mut self) -> Result_Expr {
+    fn block(&mut self) -> ResultStmt {
+        let mut block_stmts = Vec::new();
+        loop {
+            if let Some(tok) = self.match_next(&[EOF]) {
+                break Err(SyntaxError::ClosingBracket(tok.line))
+            }
+            if let Some(_) = self.match_next(&[RIGHT_BRACE]) {
+                break Ok(Stmt::Block(block_stmts))
+            }
+            let stmt = self.declaration()?;
+            block_stmts.push(Box::new(stmt));
+        }
+    }
+
+    fn expression(&mut self) -> ResultExpr {
         Ok(self.assignment()?)
     }
 
-    fn assignment(&mut self) -> Result_Expr {
+    fn assignment(&mut self) -> ResultExpr {
         let res = match (self.ternary()?, self.match_next(&[EQUAL])) {
             (expr, None) => expr,
-            (Expr::Variable(ident), Some(eq_token)) => Expr::Assignment(Assignment {
+            (Expr::Variable(ident), Some(_)) => Expr::Assignment(Assignment {
                 ident,
                 expression: Box::new(self.ternary()?),
             }),
             (_, Some(eq_token)) => Err(SyntaxError::InvalidAssignment(eq_token.line))?,
-            _ => unreachable!(),
         };
         Ok(res)
     }
 
-    fn ternary(&mut self) -> Result_Expr {
+    fn ternary(&mut self) -> ResultExpr {
         let mut expr = self.equality()?;
         if let Some(op) = self.match_next(&[TERNARY]) {
             let if_true = self.equality()?;
@@ -166,10 +182,10 @@ impl Parser {
         Ok(expr)
     }
 
-    fn equality(&mut self) -> Result_Expr {
+    fn equality(&mut self) -> ResultExpr {
         let mut expr = self.comparison()?;
 
-        while let Some(op) = (self.match_next(&[BANG_EQUAL, EQUAL_EQUAL])) {
+        while let Some(op) = self.match_next(&[BANG_EQUAL, EQUAL_EQUAL]) {
             let right = Box::new(self.comparison()?);
             expr = Expr::Binary(Binary {
                 left: Box::new(expr),
@@ -181,10 +197,10 @@ impl Parser {
         Ok(expr)
     }
 
-    fn comparison(&mut self) -> Result_Expr {
+    fn comparison(&mut self) -> ResultExpr {
         let mut expr = self.addition()?;
 
-        while let Some(op) = (self.match_next(&[GREATER, GREATER_EQUAL, LESS, LESS_EQUAL])) {
+        while let Some(op) = self.match_next(&[GREATER, GREATER_EQUAL, LESS, LESS_EQUAL]) {
             let right = Box::new(self.addition()?);
             expr = Expr::Binary(Binary {
                 left: Box::new(expr),
@@ -196,10 +212,10 @@ impl Parser {
         Ok(expr)
     }
 
-    fn addition(&mut self) -> Result_Expr {
+    fn addition(&mut self) -> ResultExpr {
         let mut expr = self.multiplication()?;
 
-        while let Some(op) = (self.match_next(&[PLUS, MINUS])) {
+        while let Some(op) = self.match_next(&[PLUS, MINUS]) {
             let right = Box::new(self.multiplication()?);
             expr = Expr::Binary(Binary {
                 left: Box::new(expr),
@@ -211,10 +227,10 @@ impl Parser {
         Ok(expr)
     }
 
-    fn multiplication(&mut self) -> Result_Expr {
+    fn multiplication(&mut self) -> ResultExpr {
         let mut expr = self.unary()?;
 
-        while let Some(op) = (self.match_next(&[STAR, SLASH])) {
+        while let Some(op) = self.match_next(&[STAR, SLASH]) {
             let right = Box::new(self.unary()?);
             expr = Expr::Binary(Binary {
                 left: Box::new(expr),
@@ -225,8 +241,8 @@ impl Parser {
         Ok(expr)
     }
 
-    fn unary(&mut self) -> Result_Expr {
-        if let Some(op) = (self.match_next(&[BANG, MINUS])) {
+    fn unary(&mut self) -> ResultExpr {
+        if let Some(op) = self.match_next(&[BANG, MINUS]) {
             let expr = Box::new(self.unary()?);
             return Ok(Expr::Unary(Unary {
                 operator: op,
@@ -236,8 +252,8 @@ impl Parser {
         self.primary()
     }
 
-    fn primary(&mut self) -> Result_Expr {
-        if let Some(_) = (self.match_next(&[LEFT_PAREN])) {
+    fn primary(&mut self) -> ResultExpr {
+        if let Some(_) = self.match_next(&[LEFT_PAREN]) {
             let expr = Expr::Grouping(Grouping {
                 expression: Box::new(self.expression()?),
             });
