@@ -58,7 +58,7 @@ pub enum Stmt {
     Expr(Expr),
     Print(Expr),
     VarDecl(VarDecl),
-    Block(Vec<Box<Stmt>>)
+    Block(Vec<Box<Stmt>>),
 }
 
 pub struct Parser {
@@ -116,10 +116,10 @@ impl Parser {
 
     fn statement(&mut self) -> ResultStmt {
         if let Some(_) = self.match_next(&[PRINT]) {
-            return Ok(self.print_statement()?)
+            return Ok(self.print_statement()?);
         }
-        if let Some(_) = self.match_next(&[LEFT_BRACE]){
-            return Ok(self.block()?)
+        if let Some(_) = self.match_next(&[LEFT_BRACE]) {
+            return Ok(self.block()?);
         }
         Ok(self.expr_statement()?)
     }
@@ -140,10 +140,10 @@ impl Parser {
         let mut block_stmts = Vec::new();
         loop {
             if let Some(tok) = self.match_next(&[EOF]) {
-                break Err(SyntaxError::ClosingBracket(tok.line))
+                break Err(SyntaxError::ClosingBracket(tok.line));
             }
             if let Some(_) = self.match_next(&[RIGHT_BRACE]) {
-                break Ok(Stmt::Block(block_stmts))
+                break Ok(Stmt::Block(block_stmts));
             }
             let stmt = self.declaration()?;
             block_stmts.push(Box::new(stmt));

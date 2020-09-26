@@ -29,10 +29,8 @@ impl fmt::Display for SyntaxError {
             }
             SyntaxError::InvalidAssignment(line) => {
                 write!(f, "[line {}] Invalid assignment target", line)
-            },
-            SyntaxError::ClosingBracket(line) => {
-                write!(f, "[line {}] Expected \"}}\"", line)
             }
+            SyntaxError::ClosingBracket(line) => write!(f, "[line {}] Expected \"}}\"", line),
         }
     }
 }

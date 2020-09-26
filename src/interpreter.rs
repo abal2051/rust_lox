@@ -100,7 +100,7 @@ impl Interpreter {
                 initializer: None,
             }) => {
                 self.env.as_mut().unwrap().define(lexeme, None);
-            },
+            }
             Stmt::Block(stmts) => {
                 let mut new_env = Environment::new();
                 new_env.set_parent(self.env.take());
@@ -110,8 +110,12 @@ impl Interpreter {
                 }
                 let env = self.env.take().unwrap();
                 match env.parent_env {
-                    Some(env) => { self.env = Some(*env); },
-                    None => {self.env = Some(env);}
+                    Some(env) => {
+                        self.env = Some(*env);
+                    }
+                    None => {
+                        self.env = Some(env);
+                    }
                 }
             }
         }
