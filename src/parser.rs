@@ -31,6 +31,12 @@ pub struct Ternary {
 }
 
 #[derive(Debug, Clone)]
+pub struct Assignment {
+    pub ident: token::Token,
+    pub expression: Box<Expr>,
+}
+
+#[derive(Debug, Clone)]
 pub enum Expr {
     Ternary(Ternary),
     Binary(Binary),
@@ -38,16 +44,20 @@ pub enum Expr {
     Literal(token::Literal),
     Grouping(Grouping),
     Variable(token::Token),
+    Assignment(Assignment),
+}
+
+#[derive(Debug, Clone)]
+pub struct Var_Decl {
+    pub ident: token::Token,
+    pub initializer: Option<Expr>
 }
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Expr(Expr),
     Print(Expr),
-    Var {
-        ident: token::Token,
-        initializer: Option<Expr>,
-    },
+    Var_Decl(Var_Decl)
 }
 
 pub struct Parser {
@@ -100,7 +110,7 @@ impl Parser {
             None
         };
         self.consume(SEMICOLON)?;
-        Ok(Stmt::Var { ident, initializer })
+        Ok(Stmt::Var_Decl(Var_Decl { ident, initializer }))
     }
 
     fn statement(&mut self) -> Result_Stmt {
@@ -124,7 +134,20 @@ impl Parser {
     }
 
     fn expression(&mut self) -> Result_Expr {
-        Ok(self.ternary()?)
+        Ok(self.assignment()?)
+    }
+
+    fn assignment(&mut self) -> Result_Expr {
+        let res = match (self.ternary()?, self.match_next(&[EQUAL])) {
+            (expr, None) => expr,
+            (Expr::Variable(ident), Some(eq_token)) => Expr::Assignment(Assignment {
+                ident,
+                expression: Box::new(self.ternary()?),
+            }),
+            (_, Some(eq_token)) => Err(SyntaxError::InvalidAssignment(eq_token.line))?,
+            _ => unreachable!(),
+        };
+        Ok(res)
     }
 
     fn ternary(&mut self) -> Result_Expr {
@@ -227,7 +250,7 @@ impl Parser {
             Some(tok) => match tok.token_type {
                 NUMBER | STRING | TRUE | FALSE | NIL => Ok(Expr::Literal(tok.literal.unwrap())),
                 IDENTIFIER => Ok(Expr::Variable(tok)),
-                _ => Err(SyntaxError::MissingExprError(tok.line)),
+                _ => Err(SyntaxError::MissingExpr(tok.line)),
             },
         }
     }
@@ -261,7 +284,7 @@ impl Parser {
         match self.peek() {
             Some(tok) if (tok).token_type == expected => Ok(self.advance().unwrap()),
             Some(tok) if expected == IDENTIFIER => Err(SyntaxError::MissingIdentifier(tok.line)),
-            Some(tok) if expected == RIGHT_PAREN => Err(SyntaxError::ClosingParenError(tok.line)),
+            Some(tok) if expected == RIGHT_PAREN => Err(SyntaxError::ClosingParen(tok.line)),
             Some(tok) if expected == COLON => Err(SyntaxError::MissingTernaryColon(tok.line)),
             Some(tok) if expected == SEMICOLON => Err(SyntaxError::MissingSemicolon(tok.line)),
             _ => panic!("Should not have reached this state"),

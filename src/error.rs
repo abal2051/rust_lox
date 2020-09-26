@@ -4,19 +4,20 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum SyntaxError {
-    ClosingParenError(usize),
-    MissingExprError(usize),
+    ClosingParen(usize),
+    MissingExpr(usize),
     MissingTernaryColon(usize),
     MissingSemicolon(usize),
-    MissingIdentifier(usize)
+    MissingIdentifier(usize),
+    InvalidAssignment(usize),
 }
 
 impl fmt::Display for SyntaxError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            SyntaxError::ClosingParenError(line) => write!(f, "[line {}] Missing \')\'", line),
-            SyntaxError::MissingExprError(line) => {
-                write!(f, "[line {}] Expected expression on line", line)
+            SyntaxError::ClosingParen(line) => write!(f, "[line {}] Missing \')\'", line),
+            SyntaxError::MissingExpr(line) => {
+                write!(f, "[line {}] Expected expression", line)
             },
             SyntaxError::MissingTernaryColon(line) => {
                 write!(f, "[line {}] Missing \":\" inside ternary expression", line)
@@ -26,6 +27,9 @@ impl fmt::Display for SyntaxError {
             }
             SyntaxError::MissingIdentifier(line) => {
                 write!(f, "[line {}] Expected identifier after \"var\"", line)
+            }
+            SyntaxError::InvalidAssignment(line) => {
+                write!(f, "[line {}] Invalid assignment target", line)
             }
         }
     }
@@ -58,6 +62,7 @@ impl Error for LexicalError {}
 pub enum RuntimeError {
     BinaryTypeError(token::Literal, token::Token, token::Literal),
     UnaryTypeError(token::Token, token::Literal),
+    UndefinedVariable(String),
 }
 
 impl fmt::Display for RuntimeError {
@@ -72,6 +77,11 @@ impl fmt::Display for RuntimeError {
                 f,
                 "No unary operator \"{}\" for operand of type ({})",
                 op.lexeme, right
+            ),
+            RuntimeError::UndefinedVariable(ident) => write!(
+                f,
+                "Undefined variable \"{}\"",
+                ident
             ),
         }
     }

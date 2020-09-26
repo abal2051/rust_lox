@@ -1,28 +1,84 @@
 use crate::error::RuntimeError;
-use crate::parser::{Binary, Expr, Grouping, Stmt, Ternary, Unary};
+use crate::parser::{Binary, Expr, Grouping, Stmt, Ternary, Unary, Assignment, Var_Decl};
 use crate::token::{self, Literal::*, TokenType::*};
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry, hash_map::OccupiedEntry, hash_map::VacantEntry};
 
 type Result_Interpreter = Result<token::Literal, RuntimeError>;
 
-struct Environment {
+pub struct Interpreter {
+    env: Environment
 }
 
-pub struct Interpreter {}
+struct Environment {
+    env: HashMap<String, token::Literal>,
+    parent_env: Option<Box<Environment>>
+}
+
+
+impl Environment {
+    fn new() -> Environment {
+        Environment {
+            env: HashMap::new(),
+            parent_env: None
+        }
+    }
+
+    fn set_parent(&mut self, parent_env: Environment) {
+        self.parent_env = Some(Box::new(parent_env));
+    }
+
+    fn disown_parent(&mut self) -> Option<Box<Environment>>{
+        self.parent_env.take()
+    }
+
+    fn define(&mut self, ident: String, literal: Option<token::Literal>) {
+        if let Some(value) = literal {
+            self.env.insert(ident, value);
+        } else {
+            self.env.insert(ident, LoxNil);
+        }
+    }
+
+    fn get_entry(&mut self, ident: String) -> Result<OccupiedEntry<String, token::Literal>, RuntimeError> {
+        if let Entry::Occupied(entry) = self.env.entry(ident.clone()) {
+            return Ok(entry)
+        } else {
+            if let None = self.parent_env {
+                return Err(RuntimeError::UndefinedVariable(ident))
+            } else {
+                let parent_env = self.parent_env.as_mut().unwrap();
+                return Ok(parent_env.get_entry(ident)?)
+            }
+        };
+    }
+
+    fn get(&mut self, ident: String) -> Result_Interpreter {
+        let entry = self.get_entry(ident)?;
+        Ok(entry.get().clone())
+    }
+
+    fn assign(&mut self, ident: String, literal: token::Literal) -> Result_Interpreter{
+        let entry = self.get_entry(ident)?;
+        entry.replace_entry(literal.clone());
+        Ok(literal)
+    }
+}
 
 impl Interpreter {
     pub fn new() -> Interpreter {
-        Interpreter {}
+        Interpreter {
+            env: Environment::new()
+        }
     }
 
-    pub fn interpret(&self, stmts: Vec<Stmt>) -> Result<(), RuntimeError> {
+    pub fn interpret(&mut self, stmts: Vec<Stmt>) -> Result<(), RuntimeError> {
         for stmt in stmts.into_iter() {
             self.execute(stmt)?
         }
         Ok(())
     }
 
-    pub fn execute(&self, stmt: Stmt) -> Result<(), RuntimeError> {
+    pub fn execute(&mut self, stmt: Stmt) -> Result<(), RuntimeError> {
         match stmt {
             Stmt::Expr(expr) => {
                 self.evaluate(expr)?;
@@ -31,27 +87,42 @@ impl Interpreter {
                 let res = self.evaluate(expr)?;
                 println!("{}", res);
             }
+            Stmt::Var_Decl(Var_Decl{ ident: token::Token { lexeme, .. }, initializer: Some(expr)}) => {
+                let res = self.evaluate(expr)?;
+                self.env.define(lexeme, Some(res));
+            }
+            Stmt::Var_Decl(Var_Decl { ident: token::Token { lexeme, ..}, initializer: None}) => {
+                self.env.define(lexeme, None);
+            }
             _ => panic!(),
         }
         Ok(())
     }
 
-    fn evaluate(&self, expr: Expr) -> Result_Interpreter {
+    fn evaluate(&mut self, expr: Expr) -> Result_Interpreter {
         match expr {
             Expr::Literal(literal) => Ok(literal),
-            Expr::Grouping(grouping) => self.eval_expr(grouping),
+            Expr::Grouping(grouping) => self.eval_grouping(grouping),
             Expr::Unary(unary) => self.eval_unary(unary),
             Expr::Binary(binary) => self.eval_binary(binary),
             Expr::Ternary(ternary) => self.eval_ternary(ternary),
+            Expr::Variable(token) => self.env.get(token.lexeme),
+            Expr::Assignment(assignment) => self.eval_assignment(assignment),
             _ => panic!(),
         }
     }
 
-    fn eval_expr(&self, group_expr: Grouping) -> Result_Interpreter {
+    fn eval_assignment(&mut self, assignment_expr: Assignment) -> Result_Interpreter{
+        let Assignment { ident, expression } = assignment_expr;
+        let r_value = self.evaluate(*expression)?;
+        self.env.assign(ident.lexeme, r_value)
+    }
+
+    fn eval_grouping(&mut self, group_expr: Grouping) -> Result_Interpreter {
         self.evaluate(*group_expr.expression)
     }
 
-    fn eval_unary(&self, unary_expr: Unary) -> Result_Interpreter {
+    fn eval_unary(&mut self, unary_expr: Unary) -> Result_Interpreter {
         let Unary { operator, right } = unary_expr;
         let right_val = self.evaluate(*right)?;
 
@@ -63,7 +134,7 @@ impl Interpreter {
         Ok(ret)
     }
 
-    fn eval_binary(&self, bin_expr: Binary) -> Result_Interpreter {
+    fn eval_binary(&mut self, bin_expr: Binary) -> Result_Interpreter {
         let Binary {
             left,
             operator,
@@ -111,14 +182,15 @@ impl Interpreter {
         Ok(ret)
     }
 
-    fn eval_ternary(&self, tern_expr: Ternary) -> Result_Interpreter {
+    fn eval_ternary(&mut self, tern_expr: Ternary) -> Result_Interpreter {
         let Ternary {
             condition,
             if_true,
             if_false,
             ..
         } = tern_expr;
-        let condition = self.isTruthy(self.evaluate(*condition)?);
+        let condition = self.evaluate(*condition)?;
+        let condition = self.isTruthy(condition);
         let if_true = self.evaluate(*if_true)?;
         if condition {
             Ok(if_true)
@@ -136,3 +208,4 @@ impl Interpreter {
         }
     }
 }
+

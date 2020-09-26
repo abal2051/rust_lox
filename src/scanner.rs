@@ -53,6 +53,12 @@ impl Scanner {
         }
     }
 
+    pub fn print_tokens(&mut self) {
+        for tok in &self.tokens {
+            println!("[{:?}]", tok);
+        }
+    }
+
     pub fn scan_tokens(&mut self) -> Result_Line {
         //let mut source_copy = self.source.clone();
         //let source_it = source_copy.chars().enumerate();
