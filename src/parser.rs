@@ -4,9 +4,9 @@ use crate::token::TokenType::*;
 use std::collections::VecDeque;
 
 macro_rules! expand_binary {
-    ($sel:ident, $expr:ident, $match_slice:expr) => {
-        while let Some(op) = $sel.match_next(&$match_slice) {
-            let right = Box::new($sel.unary()?);
+    ($self:ident, $expr:ident, $match_slice:expr, $right_parse:ident) => {
+        while let Some(op) = $self.match_next(&$match_slice) {
+            let right = Box::new($self.$right_parse()?);
             $expr = Expr::Binary(Binary {
                 left: Box::new($expr),
                 operator: op,
@@ -247,31 +247,31 @@ impl Parser {
 
     fn logic_or(&mut self) -> ResultExpr {
         let mut expr = self.logic_and()?;
-        expand_binary!(self, expr, [OR]);
+        expand_binary!(self, expr, [OR], logic_and);
     }
 
     fn logic_and(&mut self) -> ResultExpr {
         let mut expr = self.equality()?;
-        expand_binary!(self, expr, [AND]);
+        expand_binary!(self, expr, [AND], equality);
     }
     fn equality(&mut self) -> ResultExpr {
         let mut expr = self.comparison()?;
-        expand_binary!(self, expr, [PLUS, MINUS]);
+        expand_binary!(self, expr, [PLUS, MINUS], comparison);
     }
 
     fn comparison(&mut self) -> ResultExpr {
         let mut expr = self.addition()?;
-        expand_binary!(self, expr, [GREATER, GREATER_EQUAL, LESS, LESS_EQUAL]);
+        expand_binary!(self, expr, [GREATER, GREATER_EQUAL, LESS, LESS_EQUAL], addition);
     }
 
     fn addition(&mut self) -> ResultExpr {
         let mut expr = self.multiplication()?;
-        expand_binary!(self, expr, [PLUS, MINUS]);
+        expand_binary!(self, expr, [PLUS, MINUS], multiplication);
     }
 
     fn multiplication(&mut self) -> ResultExpr {
         let mut expr = self.unary()?;
-        expand_binary!(self, expr, [STAR, SLASH]);
+        expand_binary!(self, expr, [STAR, SLASH], unary);
     }
 
     fn unary(&mut self) -> ResultExpr {
@@ -294,11 +294,11 @@ impl Parser {
             return Ok(expr);
         }
 
-        match self.advance() {
+        match self.peek() {
             None => panic!("why am i here"),
             Some(tok) => match tok.token_type {
-                NUMBER | STRING | TRUE | FALSE | NIL => Ok(Expr::Literal(tok.literal.unwrap())),
-                IDENTIFIER => Ok(Expr::Variable(tok)),
+                NUMBER | STRING | TRUE | FALSE | NIL => Ok(Expr::Literal(self.advance().unwrap().literal.unwrap())),
+                IDENTIFIER => Ok(Expr::Variable(self.advance().unwrap())),
                 _ => Err(SyntaxError::MissingExpr(tok.line)),
             },
         }
