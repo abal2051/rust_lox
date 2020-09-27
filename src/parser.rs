@@ -3,6 +3,20 @@ use crate::token;
 use crate::token::TokenType::*;
 use std::collections::VecDeque;
 
+macro_rules! expand_binary {
+    ($sel:ident, $expr:ident, $match_slice:expr) => {
+        while let Some(op) = $sel.match_next(&$match_slice) {
+            let right = Box::new($sel.unary()?);
+            $expr = Expr::Binary(Binary {
+                left: Box::new($expr),
+                operator: op,
+                right,
+            });
+        }
+        return Ok($expr)
+    };
+}
+
 type ResultExpr = Result<Expr, SyntaxError>;
 type ResultStmt = Result<Stmt, SyntaxError>;
 
@@ -54,11 +68,19 @@ pub struct VarDecl {
 }
 
 #[derive(Debug, Clone)]
+pub struct IfStmt{
+    pub condition: Box<Expr>,
+    pub if_true: Box<Stmt>,
+    pub if_false: Option<Box<Stmt>>
+}
+
+#[derive(Debug, Clone)]
 pub enum Stmt {
     Expr(Expr),
     Print(Expr),
     VarDecl(VarDecl),
     Block(Vec<Box<Stmt>>),
+    IfStmt(IfStmt)
 }
 
 pub struct Parser {
@@ -121,6 +143,9 @@ impl Parser {
         if let Some(_) = self.match_next(&[LEFT_BRACE]) {
             return Ok(self.block()?);
         }
+        if let Some(_) = self.match_next(&[IF]){
+            return Ok(self.if_stmt()?);
+        }
         Ok(self.expr_statement()?)
     }
 
@@ -148,6 +173,19 @@ impl Parser {
             let stmt = self.declaration()?;
             block_stmts.push(Box::new(stmt));
         }
+    }
+
+    fn if_stmt(&mut self) -> ResultStmt {
+        self.consume(LEFT_PAREN)?;
+        let condition = self.expression()?;
+        self.consume(RIGHT_PAREN)?;
+        let if_true = self.statement()?;
+        let if_false = if let Some(_) = self.match_next(&[ELSE]) {
+            Some(Box::new(self.statement()?))
+        } else {
+            None
+        };
+        Ok(Stmt::IfStmt(IfStmt { condition: Box::new(condition), if_true: Box::new(if_true), if_false }))
     }
 
     fn expression(&mut self) -> ResultExpr {
@@ -184,61 +222,22 @@ impl Parser {
 
     fn equality(&mut self) -> ResultExpr {
         let mut expr = self.comparison()?;
-
-        while let Some(op) = self.match_next(&[BANG_EQUAL, EQUAL_EQUAL]) {
-            let right = Box::new(self.comparison()?);
-            expr = Expr::Binary(Binary {
-                left: Box::new(expr),
-                operator: op,
-                right,
-            });
-        }
-
-        Ok(expr)
+        expand_binary!(self, expr, [PLUS,MINUS]);
     }
 
     fn comparison(&mut self) -> ResultExpr {
         let mut expr = self.addition()?;
-
-        while let Some(op) = self.match_next(&[GREATER, GREATER_EQUAL, LESS, LESS_EQUAL]) {
-            let right = Box::new(self.addition()?);
-            expr = Expr::Binary(Binary {
-                left: Box::new(expr),
-                operator: op,
-                right,
-            });
-        }
-
-        Ok(expr)
+        expand_binary!(self, expr, [GREATER, GREATER_EQUAL, LESS, LESS_EQUAL]);
     }
 
     fn addition(&mut self) -> ResultExpr {
         let mut expr = self.multiplication()?;
-
-        while let Some(op) = self.match_next(&[PLUS, MINUS]) {
-            let right = Box::new(self.multiplication()?);
-            expr = Expr::Binary(Binary {
-                left: Box::new(expr),
-                operator: op,
-                right,
-            });
-        }
-
-        Ok(expr)
+        expand_binary!(self, expr, [PLUS,MINUS]);
     }
 
     fn multiplication(&mut self) -> ResultExpr {
         let mut expr = self.unary()?;
-
-        while let Some(op) = self.match_next(&[STAR, SLASH]) {
-            let right = Box::new(self.unary()?);
-            expr = Expr::Binary(Binary {
-                left: Box::new(expr),
-                operator: op,
-                right,
-            });
-        }
-        Ok(expr)
+        expand_binary!(self, expr, [STAR,SLASH]);
     }
 
     fn unary(&mut self) -> ResultExpr {
@@ -303,6 +302,7 @@ impl Parser {
             Some(tok) if expected == RIGHT_PAREN => Err(SyntaxError::ClosingParen(tok.line)),
             Some(tok) if expected == COLON => Err(SyntaxError::MissingTernaryColon(tok.line)),
             Some(tok) if expected == SEMICOLON => Err(SyntaxError::MissingSemicolon(tok.line)),
+            Some(tok) if expected == LEFT_PAREN => Err(SyntaxError::OpeningParen(tok.line)),
             _ => panic!("Should not have reached this state"),
         }
     }

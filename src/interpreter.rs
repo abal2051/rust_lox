@@ -1,5 +1,5 @@
 use crate::error::RuntimeError;
-use crate::parser::{Assignment, Binary, Expr, Grouping, Stmt, Ternary, Unary, VarDecl};
+use crate::parser::{Assignment, Binary, Expr, Grouping, Stmt, Ternary, Unary, VarDecl, IfStmt};
 use crate::token::{self, Literal::*, TokenType::*};
 use std::collections::{
     hash_map::RandomState, hash_map::RawEntryMut, hash_map::RawOccupiedEntryMut, HashMap,
@@ -117,6 +117,15 @@ impl Interpreter {
                         self.env = Some(env);
                     }
                 }
+            },
+            Stmt::IfStmt(if_stmt) => {
+                let IfStmt { condition, if_true, if_false } = if_stmt;
+                let condition = self.evaluate(*condition)?;
+                match (self.is_truthy(condition), if_false) {
+                    (true, _) => {self.execute(*if_true)?;},
+                    (false, Some(if_false)) => {self.execute(*if_false)?;},
+                    _ => ()
+                }
             }
         }
         Ok(())
@@ -193,6 +202,8 @@ impl Interpreter {
             (any_type_left, any_type_right) => match &operator.token_type {
                 EQUAL_EQUAL => LoxBool(any_type_left == any_type_right),
                 BANG_EQUAL => LoxBool(any_type_left != any_type_right),
+                AND => LoxBool(self.is_truthy(any_type_left) && self.is_truthy(any_type_right)),
+                OR => LoxBool(self.is_truthy(any_type_left) || self.is_truthy(any_type_right)),
                 _ => Err(RuntimeError::BinaryTypeError(
                     any_type_left,
                     operator,
