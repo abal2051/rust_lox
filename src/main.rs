@@ -30,7 +30,7 @@ impl Lox {
             }
             _ => (),
         }
-       //scanner.print_tokens();
+        //scanner.print_tokens();
         let mut parser = parser::Parser::new(VecDeque::from(scanner.tokens));
         let parse_tree = parser.parse();
         for error in &parser.errors {

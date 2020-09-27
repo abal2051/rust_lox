@@ -77,7 +77,7 @@ pub struct IfStmt {
 #[derive(Debug, Clone)]
 pub struct WhileStmt {
     pub condition: Box<Expr>,
-    pub stmt: Box<Stmt>
+    pub stmt: Box<Stmt>,
 }
 
 #[derive(Debug, Clone)]
@@ -87,7 +87,7 @@ pub enum Stmt {
     VarDecl(VarDecl),
     Block(Vec<Box<Stmt>>),
     IfStmt(IfStmt),
-    WhileStmt(WhileStmt)
+    WhileStmt(WhileStmt),
 }
 
 pub struct Parser {
@@ -153,7 +153,7 @@ impl Parser {
         if let Some(_) = self.match_next(&[IF]) {
             return Ok(self.if_stmt()?);
         }
-        if let Some(_) = self.match_next(&[WHILE]){
+        if let Some(_) = self.match_next(&[WHILE]) {
             return Ok(self.while_stmt()?);
         }
         Ok(self.expr_statement()?)
@@ -207,7 +207,10 @@ impl Parser {
         let condition = self.expression()?;
         self.consume(RIGHT_PAREN)?;
         let stmt = self.statement()?;
-        Ok( Stmt::WhileStmt( WhileStmt { condition: Box::new(condition), stmt: Box::new(stmt) }))
+        Ok(Stmt::WhileStmt(WhileStmt {
+            condition: Box::new(condition),
+            stmt: Box::new(stmt),
+        }))
     }
 
     fn expression(&mut self) -> ResultExpr {

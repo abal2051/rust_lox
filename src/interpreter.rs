@@ -41,13 +41,13 @@ impl Environment {
 
     fn get_entry(
         &mut self,
-        ident: String,
+        ident: &String,
     ) -> Result<RawOccupiedEntryMut<String, token::Literal, RandomState>, RuntimeError> {
-        if let RawEntryMut::Occupied(entry) = self.env.raw_entry_mut().from_key(&ident) {
+        if let RawEntryMut::Occupied(entry) = self.env.raw_entry_mut().from_key(ident) {
             return Ok(entry);
         } else {
             if let None = self.parent_env {
-                return Err(RuntimeError::UndefinedVariable(ident));
+                return Err(RuntimeError::UndefinedVariable(ident.clone()));
             } else {
                 let parent_env = self.parent_env.as_mut().unwrap();
                 return Ok(parent_env.get_entry(ident)?);
@@ -55,12 +55,12 @@ impl Environment {
         };
     }
 
-    fn get(&mut self, ident: String) -> ResultEvaluation {
+    fn get(&mut self, ident: &String) -> ResultEvaluation {
         let entry = self.get_entry(ident)?;
         Ok(entry.get().clone())
     }
 
-    fn assign(&mut self, ident: String, literal: token::Literal) -> ResultEvaluation {
+    fn assign(&mut self, ident: &String, literal: token::Literal) -> ResultEvaluation {
         let mut entry = self.get_entry(ident)?;
         let value = entry.get_mut();
         *value = literal.clone();
@@ -119,14 +119,20 @@ impl Interpreter {
                 initializer: Some(expr),
             } => {
                 let res = self.evaluate(&expr)?;
-                self.env.as_mut().unwrap().define(ident.lexeme.clone(), Some(res));
+                self.env
+                    .as_mut()
+                    .unwrap()
+                    .define(ident.lexeme.clone(), Some(res));
             }
 
             VarDecl {
                 ident,
                 initializer: None,
             } => {
-                self.env.as_mut().unwrap().define(ident.lexeme.clone(), None);
+                self.env
+                    .as_mut()
+                    .unwrap()
+                    .define(ident.lexeme.clone(), None);
             }
         }
         Ok(())
@@ -158,7 +164,7 @@ impl Interpreter {
             if_false,
         } = if_stmt;
         let condition = self.evaluate(condition)?;
-        match (self.is_truthy(condition), if_false) {
+        match (Interpreter::is_truthy(condition), if_false) {
             (true, _) => {
                 self.execute(if_true)?;
             }
@@ -173,7 +179,7 @@ impl Interpreter {
     fn exec_while(&mut self, while_stmt: &WhileStmt) -> ResultExecution {
         let WhileStmt { condition, stmt } = while_stmt;
 
-        while { let cond = self.evaluate(&condition)?; self.is_truthy(cond) }{
+        while Interpreter::is_truthy(self.evaluate(&condition)?) {
             self.execute(stmt)?;
         }
 
@@ -186,8 +192,8 @@ impl Interpreter {
             Expr::Grouping(grouping) => self.eval_grouping(grouping),
             Expr::Unary(unary) => self.eval_unary(unary),
             Expr::Binary(binary) => self.eval_binary(binary),
-            Expr::Ternary(ternary) => self.eval_ternary(ternary.clone()),
-            Expr::Variable(token) => self.env.as_mut().unwrap().get(token.lexeme.clone()),
+            Expr::Ternary(ternary) => self.eval_ternary(ternary),
+            Expr::Variable(token) => self.env.as_mut().unwrap().get(&token.lexeme),
             Expr::Assignment(assignment) => self.eval_assignment(assignment),
         }
     }
@@ -195,7 +201,7 @@ impl Interpreter {
     fn eval_assignment(&mut self, assignment_expr: &Assignment) -> ResultEvaluation {
         let Assignment { ident, expression } = assignment_expr;
         let r_value = self.evaluate(expression)?;
-        self.env.as_mut().unwrap().assign(ident.lexeme.clone(), r_value)
+        self.env.as_mut().unwrap().assign(&ident.lexeme, r_value)
     }
 
     fn eval_grouping(&mut self, group_expr: &Grouping) -> ResultEvaluation {
@@ -208,7 +214,7 @@ impl Interpreter {
 
         let ret = match (&operator.token_type, right_val) {
             (MINUS, LoxNumber(actual_val)) => LoxNumber(-actual_val),
-            (BANG, lox_value) => LoxBool(!self.is_truthy(lox_value)),
+            (BANG, lox_value) => LoxBool(!Interpreter::is_truthy(lox_value)),
             (_, lox_type) => Err(RuntimeError::UnaryTypeError(operator.clone(), lox_type))?,
         };
         Ok(ret)
@@ -264,7 +270,7 @@ impl Interpreter {
     }
 
     fn eval_and(&mut self, left: token::Literal, right: token::Literal) -> token::Literal {
-        if !self.is_truthy(left.clone()) {
+        if !Interpreter::is_truthy(left.clone()) {
             left
         } else {
             right
@@ -272,14 +278,14 @@ impl Interpreter {
     }
 
     fn eval_or(&mut self, left: token::Literal, right: token::Literal) -> token::Literal {
-        if self.is_truthy(left.clone()) {
+        if Interpreter::is_truthy(left.clone()) {
             left
         } else {
             right
         }
     }
 
-    fn eval_ternary(&mut self, tern_expr: Ternary) -> ResultEvaluation {
+    fn eval_ternary(&mut self, tern_expr: &Ternary) -> ResultEvaluation {
         let Ternary {
             condition,
             if_true,
@@ -287,7 +293,7 @@ impl Interpreter {
             ..
         } = tern_expr;
         let condition = self.evaluate(&condition)?;
-        let condition = self.is_truthy(condition);
+        let condition = Interpreter::is_truthy(condition);
         let if_true = self.evaluate(&if_true)?;
         if condition {
             Ok(if_true)
@@ -297,7 +303,7 @@ impl Interpreter {
         }
     }
 
-    fn is_truthy(&self, literal: token::Literal) -> bool {
+    fn is_truthy(literal: token::Literal) -> bool {
         match literal {
             LoxBool(val) => val,
             LoxNil => false,
