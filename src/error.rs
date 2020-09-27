@@ -11,7 +11,7 @@ pub enum SyntaxError {
     MissingSemicolon(usize),
     MissingIdentifier(usize),
     InvalidAssignment(usize),
-    OpeningParen(usize)
+    OpeningParen(usize),
 }
 
 impl fmt::Display for SyntaxError {
@@ -32,7 +32,7 @@ impl fmt::Display for SyntaxError {
                 write!(f, "[line {}] Invalid assignment target", line)
             }
             SyntaxError::ClosingBracket(line) => write!(f, "[line {}] Expected \"}}\"", line),
-            SyntaxError::OpeningParen(line) => write!(f, "[line {}] Expected \"(\"", line)
+            SyntaxError::OpeningParen(line) => write!(f, "[line {}] Expected \"(\"", line),
         }
     }
 }

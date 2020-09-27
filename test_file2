@@ -1,6 +1,2 @@
-
-
-var x = 5;
-var y = 8;
-
-if (x > y) print "x is greater"; else print "y is greater";
+print "hi" or 2; // "hi".
+print nil or "yes"; // "yes".

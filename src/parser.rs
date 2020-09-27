@@ -13,7 +13,7 @@ macro_rules! expand_binary {
                 right,
             });
         }
-        return Ok($expr)
+        return Ok($expr);
     };
 }
 
@@ -68,10 +68,16 @@ pub struct VarDecl {
 }
 
 #[derive(Debug, Clone)]
-pub struct IfStmt{
+pub struct IfStmt {
     pub condition: Box<Expr>,
     pub if_true: Box<Stmt>,
-    pub if_false: Option<Box<Stmt>>
+    pub if_false: Option<Box<Stmt>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WhileStmt {
+    pub condition: Box<Expr>,
+    pub stmt: Box<Stmt>
 }
 
 #[derive(Debug, Clone)]
@@ -80,7 +86,8 @@ pub enum Stmt {
     Print(Expr),
     VarDecl(VarDecl),
     Block(Vec<Box<Stmt>>),
-    IfStmt(IfStmt)
+    IfStmt(IfStmt),
+    WhileStmt(WhileStmt)
 }
 
 pub struct Parser {
@@ -143,8 +150,11 @@ impl Parser {
         if let Some(_) = self.match_next(&[LEFT_BRACE]) {
             return Ok(self.block()?);
         }
-        if let Some(_) = self.match_next(&[IF]){
+        if let Some(_) = self.match_next(&[IF]) {
             return Ok(self.if_stmt()?);
+        }
+        if let Some(_) = self.match_next(&[WHILE]){
+            return Ok(self.while_stmt()?);
         }
         Ok(self.expr_statement()?)
     }
@@ -185,7 +195,19 @@ impl Parser {
         } else {
             None
         };
-        Ok(Stmt::IfStmt(IfStmt { condition: Box::new(condition), if_true: Box::new(if_true), if_false }))
+        Ok(Stmt::IfStmt(IfStmt {
+            condition: Box::new(condition),
+            if_true: Box::new(if_true),
+            if_false,
+        }))
+    }
+
+    fn while_stmt(&mut self) -> ResultStmt {
+        self.consume(LEFT_PAREN)?;
+        let condition = self.expression()?;
+        self.consume(RIGHT_PAREN)?;
+        let stmt = self.statement()?;
+        Ok( Stmt::WhileStmt( WhileStmt { condition: Box::new(condition), stmt: Box::new(stmt) }))
     }
 
     fn expression(&mut self) -> ResultExpr {
@@ -205,7 +227,7 @@ impl Parser {
     }
 
     fn ternary(&mut self) -> ResultExpr {
-        let mut expr = self.equality()?;
+        let mut expr = self.logic_or()?;
         if let Some(op) = self.match_next(&[TERNARY]) {
             let if_true = self.equality()?;
             self.consume(COLON)?;
@@ -220,9 +242,18 @@ impl Parser {
         Ok(expr)
     }
 
+    fn logic_or(&mut self) -> ResultExpr {
+        let mut expr = self.logic_and()?;
+        expand_binary!(self, expr, [OR]);
+    }
+
+    fn logic_and(&mut self) -> ResultExpr {
+        let mut expr = self.equality()?;
+        expand_binary!(self, expr, [AND]);
+    }
     fn equality(&mut self) -> ResultExpr {
         let mut expr = self.comparison()?;
-        expand_binary!(self, expr, [PLUS,MINUS]);
+        expand_binary!(self, expr, [PLUS, MINUS]);
     }
 
     fn comparison(&mut self) -> ResultExpr {
@@ -232,12 +263,12 @@ impl Parser {
 
     fn addition(&mut self) -> ResultExpr {
         let mut expr = self.multiplication()?;
-        expand_binary!(self, expr, [PLUS,MINUS]);
+        expand_binary!(self, expr, [PLUS, MINUS]);
     }
 
     fn multiplication(&mut self) -> ResultExpr {
         let mut expr = self.unary()?;
-        expand_binary!(self, expr, [STAR,SLASH]);
+        expand_binary!(self, expr, [STAR, SLASH]);
     }
 
     fn unary(&mut self) -> ResultExpr {

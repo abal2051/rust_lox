@@ -1,11 +1,14 @@
 use crate::error::RuntimeError;
-use crate::parser::{Assignment, Binary, Expr, Grouping, Stmt, Ternary, Unary, VarDecl, IfStmt};
+use crate::parser::{
+    Assignment, Binary, Expr, Grouping, IfStmt, Stmt, Ternary, Unary, VarDecl, WhileStmt,
+};
 use crate::token::{self, Literal::*, TokenType::*};
 use std::collections::{
     hash_map::RandomState, hash_map::RawEntryMut, hash_map::RawOccupiedEntryMut, HashMap,
 };
 
-type ResultInterpreter = Result<token::Literal, RuntimeError>;
+type ResultEvaluation = Result<token::Literal, RuntimeError>;
+type ResultExecution = Result<(), RuntimeError>;
 
 pub struct Interpreter {
     env: Option<Environment>,
@@ -52,12 +55,12 @@ impl Environment {
         };
     }
 
-    fn get(&mut self, ident: String) -> ResultInterpreter {
+    fn get(&mut self, ident: String) -> ResultEvaluation {
         let entry = self.get_entry(ident)?;
         Ok(entry.get().clone())
     }
 
-    fn assign(&mut self, ident: String, literal: token::Literal) -> ResultInterpreter {
+    fn assign(&mut self, ident: String, literal: token::Literal) -> ResultEvaluation {
         let mut entry = self.get_entry(ident)?;
         let value = entry.get_mut();
         *value = literal.clone();
@@ -72,107 +75,153 @@ impl Interpreter {
         }
     }
 
-    pub fn interpret(&mut self, stmts: Vec<Stmt>) -> Result<(), RuntimeError> {
+    pub fn interpret(&mut self, stmts: Vec<Stmt>) -> ResultExecution {
         for stmt in stmts.into_iter() {
-            self.execute(stmt)?
+            self.execute(&stmt)?
         }
         Ok(())
     }
 
-    pub fn execute(&mut self, stmt: Stmt) -> Result<(), RuntimeError> {
-        match stmt {
+    pub fn execute(&mut self, stmt: &Stmt) -> ResultExecution {
+        match &stmt {
             Stmt::Expr(expr) => {
-                self.evaluate(expr)?;
+                self.evaluate(&expr)?;
             }
             Stmt::Print(expr) => {
-                let res = self.evaluate(expr)?;
-                println!("{}", res);
+                self.exec_print(expr)?;
             }
-            Stmt::VarDecl(VarDecl {
-                ident: token::Token { lexeme, .. },
-                initializer: Some(expr),
-            }) => {
-                let res = self.evaluate(expr)?;
-                self.env.as_mut().unwrap().define(lexeme, Some(res));
-            }
-            Stmt::VarDecl(VarDecl {
-                ident: token::Token { lexeme, .. },
-                initializer: None,
-            }) => {
-                self.env.as_mut().unwrap().define(lexeme, None);
+            Stmt::VarDecl(var_decl) => {
+                self.exec_decl(var_decl)?;
             }
             Stmt::Block(stmts) => {
-                let mut new_env = Environment::new();
-                new_env.set_parent(self.env.take());
-                self.env = Some(new_env);
-                for stmt in stmts {
-                    self.execute(*stmt)?;
-                }
-                let env = self.env.take().unwrap();
-                match env.parent_env {
-                    Some(env) => {
-                        self.env = Some(*env);
-                    }
-                    None => {
-                        self.env = Some(env);
-                    }
-                }
-            },
+                self.exec_block(stmts)?;
+            }
             Stmt::IfStmt(if_stmt) => {
-                let IfStmt { condition, if_true, if_false } = if_stmt;
-                let condition = self.evaluate(*condition)?;
-                match (self.is_truthy(condition), if_false) {
-                    (true, _) => {self.execute(*if_true)?;},
-                    (false, Some(if_false)) => {self.execute(*if_false)?;},
-                    _ => ()
-                }
+                self.exec_if(if_stmt)?;
+            }
+            Stmt::WhileStmt(while_stmt) => {
+                self.exec_while(while_stmt)?;
             }
         }
         Ok(())
     }
 
-    fn evaluate(&mut self, expr: Expr) -> ResultInterpreter {
+    fn exec_print(&mut self, expr: &Expr) -> ResultExecution {
+        let res = self.evaluate(&expr)?;
+        println!("{}", res);
+        Ok(())
+    }
+
+    fn exec_decl(&mut self, var_decl: &VarDecl) -> ResultExecution {
+        match var_decl {
+            VarDecl {
+                ident,
+                initializer: Some(expr),
+            } => {
+                let res = self.evaluate(&expr)?;
+                self.env.as_mut().unwrap().define(ident.lexeme.clone(), Some(res));
+            }
+
+            VarDecl {
+                ident,
+                initializer: None,
+            } => {
+                self.env.as_mut().unwrap().define(ident.lexeme.clone(), None);
+            }
+        }
+        Ok(())
+    }
+
+    fn exec_block(&mut self, stmts: &Vec<Box<Stmt>>) -> ResultExecution {
+        let mut new_env = Environment::new();
+        new_env.set_parent(self.env.take());
+        self.env = Some(new_env);
+        for stmt in stmts {
+            self.execute(&stmt)?;
+        }
+        let env = self.env.take().unwrap();
+        match env.parent_env {
+            Some(env) => {
+                self.env = Some(*env);
+            }
+            None => {
+                self.env = Some(env);
+            }
+        }
+        Ok(())
+    }
+
+    fn exec_if(&mut self, if_stmt: &IfStmt) -> ResultExecution {
+        let IfStmt {
+            condition,
+            if_true,
+            if_false,
+        } = if_stmt;
+        let condition = self.evaluate(condition)?;
+        match (self.is_truthy(condition), if_false) {
+            (true, _) => {
+                self.execute(if_true)?;
+            }
+            (false, Some(if_false)) => {
+                self.execute(if_false)?;
+            }
+            _ => (),
+        };
+        Ok(())
+    }
+
+    fn exec_while(&mut self, while_stmt: &WhileStmt) -> ResultExecution {
+        let WhileStmt { condition, stmt } = while_stmt;
+
+        while { let cond = self.evaluate(&condition)?; self.is_truthy(cond) }{
+            self.execute(stmt)?;
+        }
+
+        Ok(())
+    }
+
+    fn evaluate(&mut self, expr: &Expr) -> ResultEvaluation {
         match expr {
-            Expr::Literal(literal) => Ok(literal),
+            Expr::Literal(literal) => Ok(literal.clone()),
             Expr::Grouping(grouping) => self.eval_grouping(grouping),
             Expr::Unary(unary) => self.eval_unary(unary),
             Expr::Binary(binary) => self.eval_binary(binary),
-            Expr::Ternary(ternary) => self.eval_ternary(ternary),
-            Expr::Variable(token) => self.env.as_mut().unwrap().get(token.lexeme),
+            Expr::Ternary(ternary) => self.eval_ternary(ternary.clone()),
+            Expr::Variable(token) => self.env.as_mut().unwrap().get(token.lexeme.clone()),
             Expr::Assignment(assignment) => self.eval_assignment(assignment),
         }
     }
 
-    fn eval_assignment(&mut self, assignment_expr: Assignment) -> ResultInterpreter {
+    fn eval_assignment(&mut self, assignment_expr: &Assignment) -> ResultEvaluation {
         let Assignment { ident, expression } = assignment_expr;
-        let r_value = self.evaluate(*expression)?;
-        self.env.as_mut().unwrap().assign(ident.lexeme, r_value)
+        let r_value = self.evaluate(expression)?;
+        self.env.as_mut().unwrap().assign(ident.lexeme.clone(), r_value)
     }
 
-    fn eval_grouping(&mut self, group_expr: Grouping) -> ResultInterpreter {
-        self.evaluate(*group_expr.expression)
+    fn eval_grouping(&mut self, group_expr: &Grouping) -> ResultEvaluation {
+        self.evaluate(&*group_expr.expression)
     }
 
-    fn eval_unary(&mut self, unary_expr: Unary) -> ResultInterpreter {
+    fn eval_unary(&mut self, unary_expr: &Unary) -> ResultEvaluation {
         let Unary { operator, right } = unary_expr;
-        let right_val = self.evaluate(*right)?;
+        let right_val = self.evaluate(right)?;
 
         let ret = match (&operator.token_type, right_val) {
             (MINUS, LoxNumber(actual_val)) => LoxNumber(-actual_val),
             (BANG, lox_value) => LoxBool(!self.is_truthy(lox_value)),
-            (_, lox_type) => Err(RuntimeError::UnaryTypeError(operator, lox_type))?,
+            (_, lox_type) => Err(RuntimeError::UnaryTypeError(operator.clone(), lox_type))?,
         };
         Ok(ret)
     }
 
-    fn eval_binary(&mut self, bin_expr: Binary) -> ResultInterpreter {
+    fn eval_binary(&mut self, bin_expr: &Binary) -> ResultEvaluation {
         let Binary {
             left,
             operator,
             right,
         } = bin_expr;
-        let left_val = self.evaluate(*left)?;
-        let right_val = self.evaluate(*right)?;
+        let left_val = self.evaluate(left)?;
+        let right_val = self.evaluate(right)?; //not short-circuiting here
         let ret = match (left_val, right_val) {
             (LoxNumber(left_num), LoxNumber(right_num)) => match &operator.token_type {
                 PLUS => LoxNumber(left_num + right_num),
@@ -187,7 +236,7 @@ impl Interpreter {
                 BANG_EQUAL => LoxBool(left_num != right_num),
                 _ => Err(RuntimeError::BinaryTypeError(
                     LoxNumber(left_num),
-                    operator,
+                    operator.clone(),
                     LoxNumber(right_num),
                 ))?,
             },
@@ -195,18 +244,18 @@ impl Interpreter {
                 PLUS => LoxString(format!("{}{}", left_string, right_string)),
                 _ => Err(RuntimeError::BinaryTypeError(
                     LoxString(left_string),
-                    operator,
+                    operator.clone(),
                     LoxString(right_string),
                 ))?,
             },
             (any_type_left, any_type_right) => match &operator.token_type {
                 EQUAL_EQUAL => LoxBool(any_type_left == any_type_right),
                 BANG_EQUAL => LoxBool(any_type_left != any_type_right),
-                AND => LoxBool(self.is_truthy(any_type_left) && self.is_truthy(any_type_right)),
-                OR => LoxBool(self.is_truthy(any_type_left) || self.is_truthy(any_type_right)),
+                AND => self.eval_and(any_type_left, any_type_right),
+                OR => self.eval_or(any_type_left, any_type_right),
                 _ => Err(RuntimeError::BinaryTypeError(
                     any_type_left,
-                    operator,
+                    operator.clone(),
                     any_type_right,
                 ))?,
             },
@@ -214,20 +263,36 @@ impl Interpreter {
         Ok(ret)
     }
 
-    fn eval_ternary(&mut self, tern_expr: Ternary) -> ResultInterpreter {
+    fn eval_and(&mut self, left: token::Literal, right: token::Literal) -> token::Literal {
+        if !self.is_truthy(left.clone()) {
+            left
+        } else {
+            right
+        }
+    }
+
+    fn eval_or(&mut self, left: token::Literal, right: token::Literal) -> token::Literal {
+        if self.is_truthy(left.clone()) {
+            left
+        } else {
+            right
+        }
+    }
+
+    fn eval_ternary(&mut self, tern_expr: Ternary) -> ResultEvaluation {
         let Ternary {
             condition,
             if_true,
             if_false,
             ..
         } = tern_expr;
-        let condition = self.evaluate(*condition)?;
+        let condition = self.evaluate(&condition)?;
         let condition = self.is_truthy(condition);
-        let if_true = self.evaluate(*if_true)?;
+        let if_true = self.evaluate(&if_true)?;
         if condition {
             Ok(if_true)
         } else {
-            let if_false = self.evaluate(*if_false)?;
+            let if_false = self.evaluate(&if_false)?;
             Ok(if_false)
         }
     }
