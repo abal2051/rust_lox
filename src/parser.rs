@@ -156,6 +156,9 @@ impl Parser {
         if let Some(_) = self.match_next(&[WHILE]) {
             return Ok(self.while_stmt()?);
         }
+        if let Some(_) = self.match_next(&[FOR]){
+            return Ok(self.for_stmt()?);
+        }
         Ok(self.expr_statement()?)
     }
 
@@ -213,6 +216,60 @@ impl Parser {
         }))
     }
 
+    fn for_stmt(&mut self) -> ResultStmt {
+        self.consume(LEFT_PAREN)?;
+        let initializer = if let Some(_) = self.match_next(&[VAR]){
+            Some(self.var_declaration()?)
+        } else if let Some(_) = self.match_next(&[SEMICOLON]) {
+            None
+        } else {
+            Some(self.expr_statement()?)
+        };
+
+        let condition = if let Some(_) = self.match_next(&[SEMICOLON]) {
+            Expr::Literal(token::Literal::LoxBool(true))
+        } else {
+            let expr = self.expression()?;
+            self.consume(SEMICOLON)?;
+            expr
+        };
+
+        let increment = if self.peek().unwrap().token_type == RIGHT_PAREN {
+            None
+        } else {
+            let expr = Some(self.expression()?);
+            expr
+        };
+
+        self.consume(RIGHT_PAREN)?;
+        let body = self.statement()?;
+
+        let body = if let Some(increment_expr) = increment {
+            let mut vec = Vec::new();
+            vec.push(Box::new(body));
+            vec.push( Box::new(Stmt::Expr(increment_expr)) );
+            Stmt::Block(vec)
+        } else {
+            body
+        };
+
+        let desugered_loop = Stmt::WhileStmt (WhileStmt {
+            condition: Box::new(condition),
+            stmt: Box::new(body)
+        });
+
+        let desugered_loop = if let Some(initializer) = initializer {
+            let mut vec = Vec::new();
+            vec.push(Box::new(initializer));
+            vec.push(Box::new(desugered_loop));
+            Stmt::Block(vec)
+        } else {
+            desugered_loop
+        };
+
+        Ok(desugered_loop)
+    }
+
     fn expression(&mut self) -> ResultExpr {
         Ok(self.assignment()?)
     }
@@ -261,7 +318,12 @@ impl Parser {
 
     fn comparison(&mut self) -> ResultExpr {
         let mut expr = self.addition()?;
-        expand_binary!(self, expr, [GREATER, GREATER_EQUAL, LESS, LESS_EQUAL], addition);
+        expand_binary!(
+            self,
+            expr,
+            [GREATER, GREATER_EQUAL, LESS, LESS_EQUAL],
+            addition
+        );
     }
 
     fn addition(&mut self) -> ResultExpr {
@@ -297,7 +359,9 @@ impl Parser {
         match self.peek() {
             None => panic!("why am i here"),
             Some(tok) => match tok.token_type {
-                NUMBER | STRING | TRUE | FALSE | NIL => Ok(Expr::Literal(self.advance().unwrap().literal.unwrap())),
+                NUMBER | STRING | TRUE | FALSE | NIL => {
+                    Ok(Expr::Literal(self.advance().unwrap().literal.unwrap()))
+                }
                 IDENTIFIER => Ok(Expr::Variable(self.advance().unwrap())),
                 _ => Err(SyntaxError::MissingExpr(tok.line)),
             },
