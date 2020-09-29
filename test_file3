@@ -1,0 +1,10 @@
+
+fun add_2(x) {
+    return x + 2;
+}
+
+fun add_4(x) {
+    return add_2(add_2(x));
+}
+
+print add_4(5);

@@ -66,7 +66,7 @@ pub enum RuntimeError {
     UnaryTypeError(token::Token, token::Literal),
     UndefinedVariable(String),
     UnequalArity(usize, usize, usize),
-    NotCallable(usize)
+    NotCallable(usize),
 }
 
 impl fmt::Display for RuntimeError {
@@ -83,8 +83,12 @@ impl fmt::Display for RuntimeError {
                 op.lexeme, right
             ),
             RuntimeError::UndefinedVariable(ident) => write!(f, "Undefined variable \"{}\"", ident),
-            RuntimeError::UnequalArity(line, expected, got) => write!(f, "[line {}] Expected {} arguments but got {} arguments", line, expected, got),
-            RuntimeError::NotCallable(line) => write!(f, "[line {}] Expression not callable",line)
+            RuntimeError::UnequalArity(line, expected, got) => write!(
+                f,
+                "[line {}] Expected {} arguments but got {} arguments",
+                line, expected, got
+            ),
+            RuntimeError::NotCallable(line) => write!(f, "[line {}] Expression not callable", line),
         }
     }
 }

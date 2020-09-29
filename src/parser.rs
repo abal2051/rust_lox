@@ -101,7 +101,6 @@ pub struct ReturnStmt {
     pub expression: Box<Expr>,
 }
 
-
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Expr(Expr),
@@ -111,7 +110,7 @@ pub enum Stmt {
     Block(Vec<Box<Stmt>>),
     IfStmt(IfStmt),
     WhileStmt(WhileStmt),
-    Return(ReturnStmt)
+    Return(ReturnStmt),
 }
 
 pub struct Parser {
@@ -217,7 +216,7 @@ impl Parser {
         if let Some(_) = self.match_next(&[FOR]) {
             return Ok(self.for_stmt()?);
         }
-        if let Some(tok) = self.match_next(&[RETURN]){
+        if let Some(tok) = self.match_next(&[RETURN]) {
             return Ok(self.return_stmt(tok)?);
         }
         Ok(self.expr_statement()?)
@@ -225,9 +224,10 @@ impl Parser {
 
     fn return_stmt(&mut self, keyword: token::Token) -> ResultStmt {
         let expr = self.expression()?;
-        Ok(Stmt::Return(ReturnStmt{
+        self.consume(SEMICOLON)?;
+        Ok(Stmt::Return(ReturnStmt {
             keyword,
-            expression: Box::new(expr)
+            expression: Box::new(expr),
         }))
     }
 

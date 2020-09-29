@@ -56,7 +56,6 @@ pub enum TokenType {
     EOF,
 }
 
-
 //probably should move this out of src/tokens at this point
 use crate::interpreter::Function;
 
@@ -69,7 +68,6 @@ pub enum Literal {
     LoxFunc(Function),
 }
 
-
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -77,7 +75,7 @@ impl fmt::Display for Literal {
             Literal::LoxNumber(x) => write!(f, "{}", x),
             Literal::LoxString(x) => write!(f, "{}", x),
             Literal::LoxNil => write!(f, "Nil"),
-            Literal::LoxFunc(fun_decl) => write!(f, "{}",fun_decl.0.name) 
+            Literal::LoxFunc(fun_decl) => write!(f, "{}", fun_decl.0.name),
         }
     }
 }
