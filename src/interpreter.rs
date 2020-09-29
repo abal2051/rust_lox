@@ -25,9 +25,9 @@ impl From<RuntimeError> for RuntimeException {
 
 pub struct Interpreter {
     env: Option<Environment>,
-    pub return_slot: Option<token::Literal>,
 }
 
+#[derive(Debug)]
 struct Environment {
     env: HashMap<String, token::Literal>,
     parent_env: Option<Box<Environment>>,
@@ -136,7 +136,6 @@ impl Interpreter {
     pub fn new() -> Interpreter {
         Interpreter {
             env: Some(Environment::new()),
-            return_slot: None,
         }
     }
 
@@ -223,8 +222,18 @@ impl Interpreter {
         new_env.set_parent(self.env.take());
         self.env = Some(new_env);
         for stmt in stmts {
-            self.execute(&stmt)?;
+            match self.execute(&stmt) {
+                err @ Err(_) => {
+                    self.restore_parent_env();
+                    err?
+                },
+                _ => ()
+            }
         }
+        Ok(())
+    }
+
+    fn restore_parent_env(&mut self) {
         let env = self.env.take().unwrap();
         match env.parent_env {
             Some(env) => {
@@ -234,7 +243,6 @@ impl Interpreter {
                 self.env = Some(env);
             }
         }
-        Ok(())
     }
 
     fn exec_if(&mut self, if_stmt: &IfStmt) -> ResultExecution {
