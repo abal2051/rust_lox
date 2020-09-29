@@ -1,3 +1,3 @@
-b jlox::parser::Parser::for_stmt
+b jlox::parser::Parser::fun_declaration
 
 

@@ -51,6 +51,13 @@ pub struct Assignment {
 }
 
 #[derive(Debug, Clone)]
+pub struct Call {
+    pub callee: Box<Expr>,
+    pub paren: token::Token,
+    pub args: Vec<Box<Expr>>,
+}
+
+#[derive(Debug, Clone)]
 pub enum Expr {
     Ternary(Ternary),
     Binary(Binary),
@@ -59,12 +66,20 @@ pub enum Expr {
     Grouping(Grouping),
     Variable(token::Token),
     Assignment(Assignment),
+    Call(Call),
 }
 
 #[derive(Debug, Clone)]
 pub struct VarDecl {
     pub ident: token::Token,
     pub initializer: Option<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FunDecl {
+    pub name: token::Token,
+    pub params: Vec<token::Token>,
+    pub body: Vec<Box<Stmt>>,
 }
 
 #[derive(Debug, Clone)]
@@ -81,13 +96,22 @@ pub struct WhileStmt {
 }
 
 #[derive(Debug, Clone)]
+pub struct ReturnStmt {
+    pub keyword: token::Token,
+    pub expression: Box<Expr>,
+}
+
+
+#[derive(Debug, Clone)]
 pub enum Stmt {
     Expr(Expr),
     Print(Expr),
     VarDecl(VarDecl),
+    FunDecl(FunDecl),
     Block(Vec<Box<Stmt>>),
     IfStmt(IfStmt),
     WhileStmt(WhileStmt),
+    Return(ReturnStmt)
 }
 
 pub struct Parser {
@@ -111,7 +135,10 @@ impl Parser {
 
     fn program(&mut self) -> Vec<Stmt> {
         let mut stmts = Vec::new();
-        while self.peek().unwrap().token_type != EOF {
+        while let Some(_) = self.peek() {
+            if self.peek().unwrap().token_type == EOF {
+                break;
+            }
             let stmt = self.declaration();
             match stmt {
                 Ok(stmt) => stmts.push(stmt),
@@ -126,10 +153,41 @@ impl Parser {
 
     fn declaration(&mut self) -> ResultStmt {
         if let Some(_) = self.match_next(&[VAR]) {
-            self.var_declaration()
-        } else {
-            self.statement()
+            return self.var_declaration();
         }
+        if let Some(_) = self.match_next(&[FUN]) {
+            return self.fun_declaration("function");
+        } else {
+            return self.statement();
+        }
+    }
+
+    fn fun_declaration(&mut self, _: &str) -> ResultStmt {
+        let name = self.consume(IDENTIFIER)?;
+        self.consume(LEFT_PAREN)?;
+        let mut params = Vec::new();
+        if let None = self.match_next(&[RIGHT_PAREN]) {
+            loop {
+                if let Some(tok) = self.match_next(&[IDENTIFIER]) {
+                    params.push(tok);
+                    if let None = self.match_next(&[COMMA]) {
+                        break;
+                    }
+                }
+            }
+            self.consume(RIGHT_PAREN)?;
+        };
+        self.consume(LEFT_BRACE)?;
+        let block = if let Stmt::Block(block) = self.block()? {
+            block
+        } else {
+            unreachable!()
+        };
+        Ok(Stmt::FunDecl(FunDecl {
+            name,
+            params,
+            body: block,
+        }))
     }
 
     fn var_declaration(&mut self) -> ResultStmt {
@@ -156,10 +214,21 @@ impl Parser {
         if let Some(_) = self.match_next(&[WHILE]) {
             return Ok(self.while_stmt()?);
         }
-        if let Some(_) = self.match_next(&[FOR]){
+        if let Some(_) = self.match_next(&[FOR]) {
             return Ok(self.for_stmt()?);
         }
+        if let Some(tok) = self.match_next(&[RETURN]){
+            return Ok(self.return_stmt(tok)?);
+        }
         Ok(self.expr_statement()?)
+    }
+
+    fn return_stmt(&mut self, keyword: token::Token) -> ResultStmt {
+        let expr = self.expression()?;
+        Ok(Stmt::Return(ReturnStmt{
+            keyword,
+            expression: Box::new(expr)
+        }))
     }
 
     fn expr_statement(&mut self) -> ResultStmt {
@@ -218,7 +287,7 @@ impl Parser {
 
     fn for_stmt(&mut self) -> ResultStmt {
         self.consume(LEFT_PAREN)?;
-        let initializer = if let Some(_) = self.match_next(&[VAR]){
+        let initializer = if let Some(_) = self.match_next(&[VAR]) {
             Some(self.var_declaration()?)
         } else if let Some(_) = self.match_next(&[SEMICOLON]) {
             None
@@ -234,8 +303,11 @@ impl Parser {
             expr
         };
 
-        let increment = if self.peek().unwrap().token_type == RIGHT_PAREN {
+        let next = self.peek().unwrap();
+        let increment = if next.token_type == RIGHT_PAREN {
             None
+        } else if next.token_type == EOF {
+            Err(SyntaxError::ClosingParen(next.line))?
         } else {
             let expr = Some(self.expression()?);
             expr
@@ -247,15 +319,15 @@ impl Parser {
         let body = if let Some(increment_expr) = increment {
             let mut vec = Vec::new();
             vec.push(Box::new(body));
-            vec.push( Box::new(Stmt::Expr(increment_expr)) );
+            vec.push(Box::new(Stmt::Expr(increment_expr)));
             Stmt::Block(vec)
         } else {
             body
         };
 
-        let desugered_loop = Stmt::WhileStmt (WhileStmt {
+        let desugered_loop = Stmt::WhileStmt(WhileStmt {
             condition: Box::new(condition),
-            stmt: Box::new(body)
+            stmt: Box::new(body),
         });
 
         let desugered_loop = if let Some(initializer) = initializer {
@@ -344,7 +416,40 @@ impl Parser {
                 right: expr,
             }));
         }
-        self.primary()
+        self.call()
+    }
+
+    fn call(&mut self) -> ResultExpr {
+        let mut expr = self.primary()?;
+
+        loop {
+            if let Some(_) = self.match_next(&[LEFT_PAREN]) {
+                expr = self.finish_call(expr)?;
+            } else {
+                return Ok(expr);
+            }
+        }
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> ResultExpr {
+        let mut args = Vec::new();
+        let paren_maybe = self.peek().unwrap();
+        let paren_maybe = if !(paren_maybe.token_type == RIGHT_PAREN) {
+            loop {
+                let curr_expr = self.expression()?;
+                args.push(Box::new(curr_expr));
+                if let None = self.match_next(&[COMMA]) {
+                    break self.consume(RIGHT_PAREN)?;
+                }
+            }
+        } else {
+            self.consume(RIGHT_PAREN)?
+        };
+        Ok(Expr::Call(Call {
+            callee: Box::new(callee),
+            paren: paren_maybe,
+            args,
+        }))
     }
 
     fn primary(&mut self) -> ResultExpr {

@@ -1,6 +1,7 @@
 use crate::error::RuntimeError;
 use crate::parser::{
-    Assignment, Binary, Expr, Grouping, IfStmt, Stmt, Ternary, Unary, VarDecl, WhileStmt,
+    Assignment, Binary, Call, Expr, FunDecl, Grouping, IfStmt, Stmt, Ternary, Unary, VarDecl,
+    WhileStmt,
 };
 use crate::token::{self, Literal::*, TokenType::*};
 use std::collections::{
@@ -8,15 +9,78 @@ use std::collections::{
 };
 
 type ResultEvaluation = Result<token::Literal, RuntimeError>;
-type ResultExecution = Result<(), RuntimeError>;
+type ResultExecution = Result<(), RuntimeException>;
+
+#[derive(Debug)]
+pub enum RuntimeException {
+    RuntimeError(RuntimeError),
+    ReturnException(token::Literal),
+}
+
+impl From<RuntimeError> for RuntimeException {
+    fn from(err: RuntimeError) -> RuntimeException {
+        RuntimeException::RuntimeError(err)
+    }
+}
 
 pub struct Interpreter {
     env: Option<Environment>,
+    pub return_slot: Option<token::Literal>,
 }
 
 struct Environment {
     env: HashMap<String, token::Literal>,
     parent_env: Option<Box<Environment>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Function(pub Box<FunDecl>);
+
+impl PartialEq for Box<super::parser::FunDecl> {
+    fn eq(&self, other: &Self) -> bool {
+        (self.name == other.name) && (self.params == other.params)
+    }
+}
+
+trait Callable {
+    fn arity(&self) -> usize;
+
+    fn call(&self, interpreter: &mut Interpreter, args: Vec<token::Literal>) -> ResultEvaluation;
+
+    fn line_no(&self) -> usize;
+}
+
+impl Callable for Function {
+    fn arity(&self) -> usize {
+        self.0.params.len()
+    }
+
+    fn line_no(&self) -> usize {
+        self.0.name.line
+    }
+
+    fn call(&self, interpreter: &mut Interpreter, args: Vec<token::Literal>) -> ResultEvaluation {
+        let params_arity = self.arity();
+        let args_arity = args.len();
+        if params_arity != args_arity {
+            Err(RuntimeError::UnequalArity(
+                self.line_no(),
+                params_arity,
+                args_arity,
+            ))?
+        }
+
+        let func_decl = &self.0;
+        let mut new_env = Environment::new();
+        for (i, arg) in args.into_iter().enumerate() {
+            new_env.define(func_decl.params[i].lexeme.clone(), Some(arg));
+        }
+        match interpreter.exec_block(&func_decl.body, new_env) {
+            Err(RuntimeException::ReturnException(ret)) => Ok(ret),
+            Err(RuntimeException::RuntimeError(err)) => Err(err),
+            Ok(()) => Ok(LoxNil),
+        }
+    }
 }
 
 impl Environment {
@@ -72,6 +136,7 @@ impl Interpreter {
     pub fn new() -> Interpreter {
         Interpreter {
             env: Some(Environment::new()),
+            return_slot: None,
         }
     }
 
@@ -91,10 +156,10 @@ impl Interpreter {
                 self.exec_print(expr)?;
             }
             Stmt::VarDecl(var_decl) => {
-                self.exec_decl(var_decl)?;
+                self.exec_var_decl(var_decl)?;
             }
             Stmt::Block(stmts) => {
-                self.exec_block(stmts)?;
+                self.exec_block(stmts, Environment::new())?;
             }
             Stmt::IfStmt(if_stmt) => {
                 self.exec_if(if_stmt)?;
@@ -102,6 +167,22 @@ impl Interpreter {
             Stmt::WhileStmt(while_stmt) => {
                 self.exec_while(while_stmt)?;
             }
+            Stmt::FunDecl(fun_decl) => {
+                self.exec_fun_decl(fun_decl)?;
+            }
+            Stmt::Return(ret_stmt) => {
+                return Err(RuntimeException::ReturnException(
+                    self.evaluate(&*ret_stmt.expression)?,
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn exec_fun_decl(&mut self, fun_decl: &FunDecl) -> ResultExecution {
+        let function = token::Literal::LoxFunc(Function(Box::new(fun_decl.clone())));
+        if let Some(ref mut env) = self.env {
+            env.define(String::from(fun_decl.name.lexeme.clone()), Some(function))
         }
         Ok(())
     }
@@ -112,7 +193,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn exec_decl(&mut self, var_decl: &VarDecl) -> ResultExecution {
+    fn exec_var_decl(&mut self, var_decl: &VarDecl) -> ResultExecution {
         match var_decl {
             VarDecl {
                 ident,
@@ -138,8 +219,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn exec_block(&mut self, stmts: &Vec<Box<Stmt>>) -> ResultExecution {
-        let mut new_env = Environment::new();
+    fn exec_block(&mut self, stmts: &Vec<Box<Stmt>>, mut new_env: Environment) -> ResultExecution {
         new_env.set_parent(self.env.take());
         self.env = Some(new_env);
         for stmt in stmts {
@@ -195,7 +275,30 @@ impl Interpreter {
             Expr::Ternary(ternary) => self.eval_ternary(ternary),
             Expr::Variable(token) => self.env.as_mut().unwrap().get(&token.lexeme),
             Expr::Assignment(assignment) => self.eval_assignment(assignment),
+            Expr::Call(call) => self.eval_call(call),
+            //Expr::Call(call) => self.eval_call(call)
         }
+    }
+
+    fn eval_call(&mut self, call: &Call) -> ResultEvaluation {
+        let Call {
+            callee,
+            paren,
+            args,
+        } = call;
+
+        let function = if let LoxFunc(function) = self.evaluate(&callee)? {
+            function
+        } else {
+            Err(RuntimeError::NotCallable(paren.line))?
+        };
+
+        let mut evaluated_args = Vec::new();
+        for arg in args.into_iter() {
+            evaluated_args.push(self.evaluate(&arg)?)
+        }
+
+        function.call(self, evaluated_args)
     }
 
     fn eval_assignment(&mut self, assignment_expr: &Assignment) -> ResultEvaluation {
