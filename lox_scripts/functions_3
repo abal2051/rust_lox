@@ -1,0 +1,13 @@
+
+
+fun outer(){
+    fun inner(){
+        print "inside";
+    }
+
+    return inner;
+}
+
+var f1 = outer();
+f1();
+f1();

@@ -17,26 +17,28 @@ pub enum RuntimeException {
     ReturnException(token::Literal),
 }
 
-impl From<RuntimeError> for RuntimeException {
-    fn from(err: RuntimeError) -> RuntimeException {
-        RuntimeException::RuntimeError(err)
-    }
-}
 
 pub struct Interpreter {
     env: Option<Environment>,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone, PartialEq)]
 struct Environment {
     env: HashMap<String, token::Literal>,
     parent_env: Option<Box<Environment>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Function(pub Box<FunDecl>);
+pub struct Function(pub Box<FunDecl>, Environment);
 
-impl PartialEq for Box<super::parser::FunDecl> {
+
+impl From<RuntimeError> for RuntimeException {
+    fn from(err: RuntimeError) -> RuntimeException {
+        RuntimeException::RuntimeError(err)
+    }
+}
+
+impl PartialEq for Box<FunDecl> {
     fn eq(&self, other: &Self) -> bool {
         (self.name == other.name) && (self.params == other.params)
     }
@@ -45,7 +47,7 @@ impl PartialEq for Box<super::parser::FunDecl> {
 trait Callable {
     fn arity(&self) -> usize;
 
-    fn call(&self, interpreter: &mut Interpreter, args: Vec<token::Literal>) -> ResultEvaluation;
+    fn call(self, interpreter: &mut Interpreter, args: Vec<token::Literal>) -> ResultEvaluation;
 
     fn line_no(&self) -> usize;
 }
@@ -59,7 +61,7 @@ impl Callable for Function {
         self.0.name.line
     }
 
-    fn call(&self, interpreter: &mut Interpreter, args: Vec<token::Literal>) -> ResultEvaluation {
+    fn call(self, interpreter: &mut Interpreter, args: Vec<token::Literal>) -> ResultEvaluation {
         let params_arity = self.arity();
         let args_arity = args.len();
         if params_arity != args_arity {
@@ -71,7 +73,7 @@ impl Callable for Function {
         }
 
         let func_decl = &self.0;
-        let mut new_env = Environment::new();
+        let mut new_env = self.1;
         for (i, arg) in args.into_iter().enumerate() {
             new_env.define(func_decl.params[i].lexeme.clone(), Some(arg));
         }
@@ -139,6 +141,23 @@ impl Interpreter {
         }
     }
 
+    fn attach_parent_env(&mut self, mut new_env: Environment) {
+        new_env.set_parent(self.env.take());
+        self.env = Some(new_env);
+    }
+
+    fn restore_parent_env(&mut self) {
+        let env = self.env.take().unwrap();
+        match env.parent_env {
+            Some(env) => {
+                self.env = Some(*env);
+            }
+            None => {
+                self.env = Some(env);
+            }
+        }
+    }
+
     pub fn interpret(&mut self, stmts: Vec<Stmt>) -> ResultExecution {
         for stmt in stmts.into_iter() {
             self.execute(&stmt)?
@@ -179,7 +198,7 @@ impl Interpreter {
     }
 
     fn exec_fun_decl(&mut self, fun_decl: &FunDecl) -> ResultExecution {
-        let function = token::Literal::LoxFunc(Function(Box::new(fun_decl.clone())));
+        let function = token::Literal::LoxFunc(Function(Box::new(fun_decl.clone()),self.env.clone().unwrap()));
         if let Some(ref mut env) = self.env {
             env.define(String::from(fun_decl.name.lexeme.clone()), Some(function))
         }
@@ -218,31 +237,18 @@ impl Interpreter {
         Ok(())
     }
 
-    fn exec_block(&mut self, stmts: &Vec<Box<Stmt>>, mut new_env: Environment) -> ResultExecution {
-        new_env.set_parent(self.env.take());
-        self.env = Some(new_env);
+    fn exec_block(&mut self, stmts: &Vec<Box<Stmt>>, new_env: Environment) -> ResultExecution {
+        self.attach_parent_env(new_env);
         for stmt in stmts {
             match self.execute(&stmt) {
                 err @ Err(_) => {
                     self.restore_parent_env();
                     err?
-                },
-                _ => ()
+                }
+                _ => (),
             }
         }
         Ok(())
-    }
-
-    fn restore_parent_env(&mut self) {
-        let env = self.env.take().unwrap();
-        match env.parent_env {
-            Some(env) => {
-                self.env = Some(*env);
-            }
-            None => {
-                self.env = Some(env);
-            }
-        }
     }
 
     fn exec_if(&mut self, if_stmt: &IfStmt) -> ResultExecution {
