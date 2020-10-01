@@ -11,26 +11,24 @@ use std::collections::{
 type ResultEvaluation = Result<token::Literal, RuntimeError>;
 type ResultExecution = Result<(), RuntimeException>;
 
+type Environment = HashMap<String, token::Literal>;
+
+
 #[derive(Debug)]
 pub enum RuntimeException {
     RuntimeError(RuntimeError),
     ReturnException(token::Literal),
 }
 
-
 pub struct Interpreter {
-    env: Option<Environment>,
+    env: EnvironmentManager,
 }
 
-#[derive(Debug,Clone, PartialEq)]
-struct Environment {
-    env: HashMap<String, token::Literal>,
-    parent_env: Option<Box<Environment>>,
-}
+struct EnvironmentManager(Vec<Environment>);
+
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function(pub Box<FunDecl>, Environment);
-
 
 impl From<RuntimeError> for RuntimeException {
     fn from(err: RuntimeError) -> RuntimeException {
@@ -52,13 +50,17 @@ trait Callable {
     fn line_no(&self) -> usize;
 }
 
-impl Callable for Function {
+impl Callable for *const Function {
     fn arity(&self) -> usize {
-        self.0.params.len()
+        unsafe { 
+            (*self).as_ref().unwrap().0.params.len()
+        }
     }
 
     fn line_no(&self) -> usize {
-        self.0.name.line
+        unsafe { 
+            (*self).as_ref().unwrap().0.name.line
+        }
     }
 
     fn call(self, interpreter: &mut Interpreter, args: Vec<token::Literal>) -> ResultEvaluation {
@@ -71,37 +73,41 @@ impl Callable for Function {
                 args_arity,
             ))?
         }
+        let func_decl;
+        let new_env;
 
-        let func_decl = &self.0;
-        let mut new_env = self.1;
-        for (i, arg) in args.into_iter().enumerate() {
-            new_env.define(func_decl.params[i].lexeme.clone(), Some(arg));
+        //there has got to be a better way to do lexical scope, but this is working for now
+        unsafe {
+            func_decl = &self.as_ref().unwrap().0;
+            new_env = (*self).1.clone();
         }
-        match interpreter.exec_block(&func_decl.body, new_env) {
+        interpreter.env.push_env(new_env);
+        for (i, arg) in args.into_iter().enumerate() {
+            interpreter.env.define(func_decl.params[i].lexeme.clone(), Some(arg));
+        }
+        let res = match interpreter.exec_block(&func_decl.body) {
             Err(RuntimeException::ReturnException(ret)) => Ok(ret),
             Err(RuntimeException::RuntimeError(err)) => Err(err),
             Ok(()) => Ok(LoxNil),
+        };
+        unsafe {
+            (*(self as *mut Function)).1 = interpreter.env.pop_env();
         }
+        res
     }
 }
 
-impl Environment {
-    fn new() -> Environment {
-        Environment {
-            env: HashMap::new(),
-            parent_env: None,
-        }
-    }
-
-    fn set_parent(&mut self, parent_env: Option<Environment>) {
-        self.parent_env = Some(Box::new(parent_env.unwrap()));
+impl EnvironmentManager {
+    fn new() -> EnvironmentManager {
+        EnvironmentManager(vec![HashMap::new()])
     }
 
     fn define(&mut self, ident: String, literal: Option<token::Literal>) {
+        let current_env = self.0.last_mut().unwrap();
         if let Some(value) = literal {
-            self.env.insert(ident, value);
+            current_env.insert(ident, value);
         } else {
-            self.env.insert(ident, LoxNil);
+            current_env.insert(ident, LoxNil);
         }
     }
 
@@ -109,21 +115,21 @@ impl Environment {
         &mut self,
         ident: &String,
     ) -> Result<RawOccupiedEntryMut<String, token::Literal, RandomState>, RuntimeError> {
-        if let RawEntryMut::Occupied(entry) = self.env.raw_entry_mut().from_key(ident) {
-            return Ok(entry);
-        } else {
-            if let None = self.parent_env {
-                return Err(RuntimeError::UndefinedVariable(ident.clone()));
-            } else {
-                let parent_env = self.parent_env.as_mut().unwrap();
-                return Ok(parent_env.get_entry(ident)?);
+        for env in self.0.iter_mut().rev() {
+            if let RawEntryMut::Occupied(entry) = env.raw_entry_mut().from_key(ident) {
+                return Ok(entry)
             }
-        };
+        }
+        Err(RuntimeError::UndefinedVariable(ident.clone()))
     }
 
     fn get(&mut self, ident: &String) -> ResultEvaluation {
         let entry = self.get_entry(ident)?;
-        Ok(entry.get().clone())
+        if let &LoxFunc(ref function) = entry.get() {
+            Ok(token::Literal::LoxFuncPtr(function as *const Function))
+        } else {
+            Ok(entry.get().clone())
+        }
     }
 
     fn assign(&mut self, ident: &String, literal: token::Literal) -> ResultEvaluation {
@@ -132,29 +138,24 @@ impl Environment {
         *value = literal.clone();
         Ok(literal)
     }
+
+    fn push_env(&mut self, env: Environment) {
+        self.0.push(env);
+    }
+
+    fn pop_env(&mut self) -> Environment {
+        self.0.pop().unwrap()
+    }
+
+    fn current_env(&self) -> &Environment {
+        self.0.last().unwrap()
+    }
 }
 
 impl Interpreter {
     pub fn new() -> Interpreter {
         Interpreter {
-            env: Some(Environment::new()),
-        }
-    }
-
-    fn attach_parent_env(&mut self, mut new_env: Environment) {
-        new_env.set_parent(self.env.take());
-        self.env = Some(new_env);
-    }
-
-    fn restore_parent_env(&mut self) {
-        let env = self.env.take().unwrap();
-        match env.parent_env {
-            Some(env) => {
-                self.env = Some(*env);
-            }
-            None => {
-                self.env = Some(env);
-            }
+            env: EnvironmentManager::new(),
         }
     }
 
@@ -177,7 +178,12 @@ impl Interpreter {
                 self.exec_var_decl(var_decl)?;
             }
             Stmt::Block(stmts) => {
-                self.exec_block(stmts, Environment::new())?;
+                self.env.push_env(Environment::new());
+                let res = self.exec_block(stmts);
+                if let err @ Err(_) = res {
+                    self.env.pop_env();
+                    err?
+                }
             }
             Stmt::IfStmt(if_stmt) => {
                 self.exec_if(if_stmt)?;
@@ -198,10 +204,11 @@ impl Interpreter {
     }
 
     fn exec_fun_decl(&mut self, fun_decl: &FunDecl) -> ResultExecution {
-        let function = token::Literal::LoxFunc(Function(Box::new(fun_decl.clone()),self.env.clone().unwrap()));
-        if let Some(ref mut env) = self.env {
-            env.define(String::from(fun_decl.name.lexeme.clone()), Some(function))
-        }
+        let function = token::Literal::LoxFunc(Function(
+            Box::new(fun_decl.clone()),
+            self.env.current_env().clone(),
+        ));
+        self.env.define(String::from(fun_decl.name.lexeme.clone()), Some(function));
         Ok(())
     }
 
@@ -219,8 +226,6 @@ impl Interpreter {
             } => {
                 let res = self.evaluate(&expr)?;
                 self.env
-                    .as_mut()
-                    .unwrap()
                     .define(ident.lexeme.clone(), Some(res));
             }
 
@@ -229,20 +234,16 @@ impl Interpreter {
                 initializer: None,
             } => {
                 self.env
-                    .as_mut()
-                    .unwrap()
                     .define(ident.lexeme.clone(), None);
             }
         }
         Ok(())
     }
 
-    fn exec_block(&mut self, stmts: &Vec<Box<Stmt>>, new_env: Environment) -> ResultExecution {
-        self.attach_parent_env(new_env);
+    fn exec_block(&mut self, stmts: &Vec<Box<Stmt>>) -> ResultExecution {
         for stmt in stmts {
             match self.execute(&stmt) {
                 err @ Err(_) => {
-                    self.restore_parent_env();
                     err?
                 }
                 _ => (),
@@ -287,7 +288,7 @@ impl Interpreter {
             Expr::Unary(unary) => self.eval_unary(unary),
             Expr::Binary(binary) => self.eval_binary(binary),
             Expr::Ternary(ternary) => self.eval_ternary(ternary),
-            Expr::Variable(token) => self.env.as_mut().unwrap().get(&token.lexeme),
+            Expr::Variable(token) => self.env.get(&token.lexeme),
             Expr::Assignment(assignment) => self.eval_assignment(assignment),
             Expr::Call(call) => self.eval_call(call),
             //Expr::Call(call) => self.eval_call(call)
@@ -301,8 +302,8 @@ impl Interpreter {
             args,
         } = call;
 
-        let function = if let LoxFunc(function) = self.evaluate(&callee)? {
-            function
+        let func_ptr = if let LoxFuncPtr(func_ptr) = self.evaluate(&callee)? {
+            func_ptr
         } else {
             Err(RuntimeError::NotCallable(paren.line))?
         };
@@ -312,13 +313,13 @@ impl Interpreter {
             evaluated_args.push(self.evaluate(&arg)?)
         }
 
-        function.call(self, evaluated_args)
+        func_ptr.call(self, evaluated_args)
     }
 
     fn eval_assignment(&mut self, assignment_expr: &Assignment) -> ResultEvaluation {
         let Assignment { ident, expression } = assignment_expr;
         let r_value = self.evaluate(expression)?;
-        self.env.as_mut().unwrap().assign(&ident.lexeme, r_value)
+        self.env.assign(&ident.lexeme, r_value)
     }
 
     fn eval_grouping(&mut self, group_expr: &Grouping) -> ResultEvaluation {
