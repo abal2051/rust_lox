@@ -66,11 +66,11 @@ pub enum Literal {
     LoxNumber(f64),
     LoxNil,
     LoxFunc(Function),
-    LoxFuncPtr(*const Function)
+    LoxFuncPtr(*const Function),
 }
 
 struct FuncPtr {
-    ptr: *const Function
+    ptr: *const Function,
 }
 
 impl fmt::Display for Literal {
@@ -81,8 +81,9 @@ impl fmt::Display for Literal {
             Literal::LoxString(x) => write!(f, "{}", x),
             Literal::LoxNil => write!(f, "Nil"),
             Literal::LoxFunc(fun_decl) => write!(f, "{}", fun_decl.0.name),
-            Literal::LoxFuncPtr(fun_ptr) => write!(f, "function {}", unsafe { &(**fun_ptr)
-                .0.name.lexeme} )
+            Literal::LoxFuncPtr(fun_ptr) => {
+                write!(f, "function {}", unsafe { &(**fun_ptr).0.name.lexeme })
+            }
         }
     }
 }

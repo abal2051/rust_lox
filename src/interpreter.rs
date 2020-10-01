@@ -13,7 +13,6 @@ type ResultExecution = Result<(), RuntimeException>;
 
 type Environment = HashMap<String, token::Literal>;
 
-
 #[derive(Debug)]
 pub enum RuntimeException {
     RuntimeError(RuntimeError),
@@ -25,7 +24,6 @@ pub struct Interpreter {
 }
 
 struct EnvironmentManager(Vec<Environment>);
-
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function(pub Box<FunDecl>, Environment);
@@ -52,15 +50,11 @@ trait Callable {
 
 impl Callable for *const Function {
     fn arity(&self) -> usize {
-        unsafe { 
-            (*self).as_ref().unwrap().0.params.len()
-        }
+        unsafe { (*self).as_ref().unwrap().0.params.len() }
     }
 
     fn line_no(&self) -> usize {
-        unsafe { 
-            (*self).as_ref().unwrap().0.name.line
-        }
+        unsafe { (*self).as_ref().unwrap().0.name.line }
     }
 
     fn call(self, interpreter: &mut Interpreter, args: Vec<token::Literal>) -> ResultEvaluation {
@@ -83,7 +77,9 @@ impl Callable for *const Function {
         }
         interpreter.env.push_env(new_env);
         for (i, arg) in args.into_iter().enumerate() {
-            interpreter.env.define(func_decl.params[i].lexeme.clone(), Some(arg));
+            interpreter
+                .env
+                .define(func_decl.params[i].lexeme.clone(), Some(arg));
         }
         let res = match interpreter.exec_block(&func_decl.body) {
             Err(RuntimeException::ReturnException(ret)) => Ok(ret),
@@ -117,7 +113,7 @@ impl EnvironmentManager {
     ) -> Result<RawOccupiedEntryMut<String, token::Literal, RandomState>, RuntimeError> {
         for env in self.0.iter_mut().rev() {
             if let RawEntryMut::Occupied(entry) = env.raw_entry_mut().from_key(ident) {
-                return Ok(entry)
+                return Ok(entry);
             }
         }
         Err(RuntimeError::UndefinedVariable(ident.clone()))
@@ -208,7 +204,8 @@ impl Interpreter {
             Box::new(fun_decl.clone()),
             self.env.current_env().clone(),
         ));
-        self.env.define(String::from(fun_decl.name.lexeme.clone()), Some(function));
+        self.env
+            .define(String::from(fun_decl.name.lexeme.clone()), Some(function));
         Ok(())
     }
 
@@ -225,16 +222,14 @@ impl Interpreter {
                 initializer: Some(expr),
             } => {
                 let res = self.evaluate(&expr)?;
-                self.env
-                    .define(ident.lexeme.clone(), Some(res));
+                self.env.define(ident.lexeme.clone(), Some(res));
             }
 
             VarDecl {
                 ident,
                 initializer: None,
             } => {
-                self.env
-                    .define(ident.lexeme.clone(), None);
+                self.env.define(ident.lexeme.clone(), None);
             }
         }
         Ok(())
@@ -243,9 +238,7 @@ impl Interpreter {
     fn exec_block(&mut self, stmts: &Vec<Box<Stmt>>) -> ResultExecution {
         for stmt in stmts {
             match self.execute(&stmt) {
-                err @ Err(_) => {
-                    err?
-                }
+                err @ Err(_) => err?,
                 _ => (),
             }
         }
