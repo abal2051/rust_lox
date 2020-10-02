@@ -1,19 +1,15 @@
-fun makeCounter() {
-  var i = 0;
-  fun count() {
-    i = i + 1;
-    print i;
+fun make() {
+  var y = 5;
+  fun inside() {
+    y = y + 1;
+    print y;
   }
 
-  return count;
+  return inside;
 }
-var counter = makeCounter();
-counter(); // "1".
-counter(); // "2".
-
-var new_counter = makeCounter();
-new_counter();
-new_counter();
-new_counter();
-counter();
-
+var func = make();
+func(); // "1".
+var func2 = make();
+func();
+func2();
+func();

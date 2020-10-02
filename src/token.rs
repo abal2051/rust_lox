@@ -1,6 +1,8 @@
 #![allow(non_camel_case_types)]
 
+use std::cell::RefCell;
 use std::fmt;
+use std::rc::Rc;
 
 //surprised enums don't implement clone by default
 #[derive(Clone, Debug, PartialEq)]
@@ -65,12 +67,16 @@ pub enum Literal {
     LoxString(String),
     LoxNumber(f64),
     LoxNil,
-    LoxFunc(Function),
-    LoxFuncPtr(*const Function),
+    LoxFunc(FunctionWrapper),
 }
 
-struct FuncPtr {
-    ptr: *const Function,
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionWrapper(pub Rc<RefCell<Function>>);
+
+impl FunctionWrapper {
+    pub fn new(func: Function) -> FunctionWrapper {
+        FunctionWrapper(Rc::new(RefCell::new(func)))
+    }
 }
 
 impl fmt::Display for Literal {
@@ -80,10 +86,7 @@ impl fmt::Display for Literal {
             Literal::LoxNumber(x) => write!(f, "{}", x),
             Literal::LoxString(x) => write!(f, "{}", x),
             Literal::LoxNil => write!(f, "Nil"),
-            Literal::LoxFunc(fun_decl) => write!(f, "{}", fun_decl.0.name),
-            Literal::LoxFuncPtr(fun_ptr) => {
-                write!(f, "function {}", unsafe { &(**fun_ptr).0.name.lexeme })
-            }
+            Literal::LoxFunc(fun_decl) => write!(f, "{}", fun_decl.0.borrow().0.name.lexeme),
         }
     }
 }

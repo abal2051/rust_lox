@@ -48,13 +48,13 @@ trait Callable {
     fn line_no(&self) -> usize;
 }
 
-impl Callable for *const Function {
+impl Callable for token::FunctionWrapper {
     fn arity(&self) -> usize {
-        unsafe { (*self).as_ref().unwrap().0.params.len() }
+        self.0.borrow().0.params.len()
     }
 
     fn line_no(&self) -> usize {
-        unsafe { (*self).as_ref().unwrap().0.name.line }
+        self.0.borrow().0.name.line
     }
 
     fn call(self, interpreter: &mut Interpreter, args: Vec<token::Literal>) -> ResultEvaluation {
@@ -67,28 +67,22 @@ impl Callable for *const Function {
                 args_arity,
             ))?
         }
-        let func_decl;
-        let new_env;
 
-        //there has got to be a better way to do lexical scope, but this is working for now
-        unsafe {
-            func_decl = &self.as_ref().unwrap().0;
-            new_env = (*self).1.clone();
-        }
-        interpreter.env.push_env(new_env);
+        let func = self.0;
+        interpreter.env.push_env(func.borrow().1.clone());
+        interpreter.env.push_env(Environment::new());
         for (i, arg) in args.into_iter().enumerate() {
             interpreter
                 .env
-                .define(func_decl.params[i].lexeme.clone(), Some(arg));
+                .define(func.borrow().0.params[i].lexeme.clone(), Some(arg));
         }
-        let res = match interpreter.exec_block(&func_decl.body) {
+        let res = match interpreter.exec_block(&func.borrow().0.body) {
             Err(RuntimeException::ReturnException(ret)) => Ok(ret),
             Err(RuntimeException::RuntimeError(err)) => Err(err),
             Ok(()) => Ok(LoxNil),
         };
-        unsafe {
-            (*(self as *mut Function)).1 = interpreter.env.pop_env();
-        }
+        interpreter.env.pop_env();
+        func.borrow_mut().1 = interpreter.env.pop_env();
         res
     }
 }
@@ -121,11 +115,7 @@ impl EnvironmentManager {
 
     fn get(&mut self, ident: &String) -> ResultEvaluation {
         let entry = self.get_entry(ident)?;
-        if let &LoxFunc(ref function) = entry.get() {
-            Ok(token::Literal::LoxFuncPtr(function as *const Function))
-        } else {
-            Ok(entry.get().clone())
-        }
+        Ok(entry.get().clone())
     }
 
     fn assign(&mut self, ident: &String, literal: token::Literal) -> ResultEvaluation {
@@ -157,6 +147,10 @@ impl Interpreter {
 
     pub fn interpret(&mut self, stmts: Vec<Stmt>) -> ResultExecution {
         for stmt in stmts.into_iter() {
+            //println!("{:?}", stmt);
+            //println!("                                          ----                         ");
+            //println!("{:#?}",self.env.0);
+            //println!("-----------------------------------------------------------------------");
             self.execute(&stmt)?
         }
         Ok(())
@@ -200,10 +194,10 @@ impl Interpreter {
     }
 
     fn exec_fun_decl(&mut self, fun_decl: &FunDecl) -> ResultExecution {
-        let function = token::Literal::LoxFunc(Function(
+        let function = token::Literal::LoxFunc(token::FunctionWrapper::new(Function(
             Box::new(fun_decl.clone()),
             self.env.current_env().clone(),
-        ));
+        )));
         self.env
             .define(String::from(fun_decl.name.lexeme.clone()), Some(function));
         Ok(())
@@ -295,8 +289,8 @@ impl Interpreter {
             args,
         } = call;
 
-        let func_ptr = if let LoxFuncPtr(func_ptr) = self.evaluate(&callee)? {
-            func_ptr
+        let func_wrapper = if let LoxFunc(func_wrapper) = self.evaluate(&callee)? {
+            func_wrapper
         } else {
             Err(RuntimeError::NotCallable(paren.line))?
         };
@@ -306,7 +300,7 @@ impl Interpreter {
             evaluated_args.push(self.evaluate(&arg)?)
         }
 
-        func_ptr.call(self, evaluated_args)
+        func_wrapper.call(self, evaluated_args)
     }
 
     fn eval_assignment(&mut self, assignment_expr: &Assignment) -> ResultEvaluation {
